@@ -29,15 +29,26 @@
 
 ### 종목 식별자
 
-`stock_id` 하나로 통일한다. 형식은 `{market}:{code}`.
+`stock_id` 하나로 통일한다. 형식은 `{exchange}:{code}`.
+
+**접두어는 거래소(exchange)다. 시장 구분(KOSPI/KOSDAQ)이 아니다.**
 
 ```
-KRX:005930      삼성전자
-KOSDAQ:247540   에코프로비엠
+KRX:005930      삼성전자 (KOSPI)
+KRX:247540      에코프로비엠 (KOSDAQ)
 NASDAQ:AAPL     (향후)
 ```
 
-`market`, `code`는 조회 편의를 위해 별도 컬럼으로도 보관한다.
+한국 종목코드는 KOSPI와 KOSDAQ 사이에 중복이 없다. 따라서 접두어에 시장 구분을
+넣을 필요가 없다.
+
+**이전상장에 대비한 결정이다.** 종목이 KOSDAQ에서 KOSPI로 옮겨가도 거래소는
+그대로 KRX이므로 `stock_id`가 바뀌지 않는다. 접두어에 시장을 넣으면 이전상장
+시점에 식별자가 바뀌고, 시세·주문·포지션 이력이 전부 끊긴다.
+
+시장 구분은 `stock.board`에서 관리한다. 이 값은 변할 수 있다.
+
+`exchange`, `code`는 조회 편의를 위해 별도 컬럼으로도 보관한다.
 
 ### 금액
 
@@ -54,13 +65,13 @@ NASDAQ:AAPL     (향후)
 
 ## 1. 기준 정보
 
-### market
+### exchange
 
 거래시간을 코드에 하드코딩하지 않기 위한 테이블.
 
 ```sql
-CREATE TABLE market (
-    market          TEXT PRIMARY KEY,        -- 'KRX', 'KOSDAQ', 'NASDAQ'
+CREATE TABLE exchange (
+    exchange        TEXT PRIMARY KEY,        -- 'KRX', 'NASDAQ'
     name            TEXT NOT NULL,
     country         TEXT NOT NULL,           -- 'KR', 'US'
     currency        TEXT NOT NULL,           -- 'KRW', 'USD'
@@ -71,16 +82,17 @@ CREATE TABLE market (
 );
 ```
 
-초기 데이터는 `KRX`, `KOSDAQ` 두 건. 미국은 나중에 행만 추가한다.
+초기 데이터는 `KRX` 한 건. KOSPI와 KOSDAQ은 거래시간이 같은 하나의 거래소이므로
+행을 나누지 않는다. 미국은 나중에 행만 추가한다.
 
-### market_holiday
+### exchange_holiday
 
 ```sql
-CREATE TABLE market_holiday (
-    market          TEXT NOT NULL REFERENCES market(market),
+CREATE TABLE exchange_holiday (
+    exchange        TEXT NOT NULL REFERENCES exchange(exchange),
     holiday_date    DATE NOT NULL,
     name            TEXT,
-    PRIMARY KEY (market, holiday_date)
+    PRIMARY KEY (exchange, holiday_date)
 );
 ```
 
@@ -89,8 +101,9 @@ CREATE TABLE market_holiday (
 ```sql
 CREATE TABLE stock (
     stock_id        TEXT PRIMARY KEY,        -- 'KRX:005930'
-    market          TEXT NOT NULL REFERENCES market(market),
+    exchange        TEXT NOT NULL REFERENCES exchange(exchange),
     code            TEXT NOT NULL,           -- '005930'
+    board           TEXT NOT NULL,           -- 'KOSPI' | 'KOSDAQ' | 'KONEX'
     name            TEXT NOT NULL,
     sector          TEXT,
     listed_shares   BIGINT,                  -- 상장주식수
@@ -108,13 +121,15 @@ CREATE INDEX idx_stock_name ON stock(name);
 
 `is_managed` 등 상태 플래그는 유니버스 필터에서 사용한다. 일 1회 갱신.
 
+`exchange`는 **불변**, `board`는 **가변**이다. 이전상장이 일어나면 `board`만 바뀌고
+`stock_id`는 그대로 유지되므로 과거 이력이 끊기지 않는다.
+
 ### account
 
 ```sql
 CREATE TABLE account (
     account_id      TEXT PRIMARY KEY,        -- 'daytrade', 'swing', 'paper'
     broker          TEXT NOT NULL,           -- 'kiwoom'
-    account_no      TEXT NOT NULL,           -- 실제 계좌번호
     strategy        TEXT NOT NULL,           -- 'daytrade' | 'swing'
     is_paper        BOOLEAN NOT NULL DEFAULT FALSE,
     currency        TEXT NOT NULL DEFAULT 'KRW',
@@ -122,7 +137,16 @@ CREATE TABLE account (
 );
 ```
 
-계좌번호 자체는 DB에 두되, API 키·시크릿은 DB에 저장하지 않는다. `.env` 참조.
+**계좌번호는 DB에 저장하지 않는다.** API 키·시크릿과 마찬가지로 `.env`에만 둔다.
+DB 백업 덤프에 평문으로 남는 것을 막기 위한 결정이다.
+
+브로커 어댑터가 `account_id`로 환경변수를 찾아 실제 계좌번호를 얻는다.
+
+| account_id | 환경변수 |
+|---|---|
+| `daytrade` | `KIWOOM_ACCOUNT_DAYTRADE` |
+| `swing` | `KIWOOM_ACCOUNT_SWING` |
+| `paper` | `KIWOOM_ACCOUNT_PAPER` |
 
 ---
 
@@ -423,6 +447,7 @@ CREATE INDEX idx_signal_pending ON signal(strategy, created_at)
 ```sql
 CREATE TABLE order_request (
     order_id        BIGSERIAL PRIMARY KEY,
+    client_order_id TEXT NOT NULL UNIQUE,    -- ULID. INSERT 전에 애플리케이션이 생성
     account_id      TEXT NOT NULL REFERENCES account(account_id),
     stock_id        TEXT NOT NULL REFERENCES stock(stock_id),
     signal_id       BIGINT REFERENCES signal(signal_id),
@@ -445,6 +470,12 @@ CREATE INDEX idx_order_account_date ON order_request(account_id, created_at DESC
 CREATE INDEX idx_order_open ON order_request(status)
     WHERE status IN ('pending','submitted','partial');
 ```
+
+`client_order_id`는 **우리 쪽 멱등성 키**다. 증권사가 사용자 지정 주문 ID를
+지원하는지와 무관하게 사용한다. UNIQUE 제약이 중복 주문을 DB 수준에서 차단한다.
+
+값은 ULID이며 애플리케이션이 INSERT 전에 생성한다. `order_id`를 참조하지 않으므로
+채번 순환이 없다. (`INTERFACES.md` 2.1)
 
 ### execution
 
@@ -473,13 +504,23 @@ CREATE TABLE position (
     quantity        INT NOT NULL,
     avg_price       NUMERIC(20,4) NOT NULL,
     currency        TEXT NOT NULL DEFAULT 'KRW',
-    opened_at       TIMESTAMPTZ NOT NULL,
+    opened_at       TIMESTAMPTZ,             -- NULL 허용. 아래 설명 참조
     synced_at       TIMESTAMPTZ NOT NULL,    -- 증권사 잔고와 대조한 시각
     PRIMARY KEY (account_id, stock_id)
 );
 ```
 
 계좌가 전략별로 분리돼 있으므로 이 테이블이 곧 전략별 포지션이다.
+
+`opened_at`은 **NULL을 허용한다.** 증권사 잔고 조회가 최초 취득 시각을 주지 않기 때문이다.
+
+| 포지션 발생 경로 | `opened_at` |
+|---|---|
+| 엔진 주문으로 생긴 포지션 | 해당 종목의 최초 `execution.executed_at` |
+| 동기화로 발견된 포지션 (수동 매매 등) | NULL |
+
+NULL은 값이 없다는 뜻이 아니라 모른다는 뜻이다.
+보유 기간을 계산하는 로직은 NULL을 처리해야 한다.
 
 **증권사 잔고를 정본으로 삼는다.** 이 테이블은 캐시이며, 주기적으로 대조해서
 불일치가 발견되면 증권사 값으로 덮어쓰고 경고를 남긴다.
@@ -498,6 +539,7 @@ CREATE TABLE daily_pnl (
     realized_pnl    NUMERIC(20,4),           -- 당일 실현손익
     unrealized_pnl  NUMERIC(20,4),           -- 평가손익
     trade_count     INT DEFAULT 0,
+    currency        TEXT NOT NULL DEFAULT 'KRW',
     PRIMARY KEY (account_id, trade_date)
 );
 ```
@@ -640,6 +682,7 @@ CREATE TABLE backtest_run (
     params          JSONB NOT NULL,          -- 사용한 파라미터 전체
     initial_capital NUMERIC(20,4) NOT NULL,
     final_capital   NUMERIC(20,4),
+    currency        TEXT NOT NULL DEFAULT 'KRW',
     total_return    NUMERIC(10,4),
     mdd             NUMERIC(10,4),           -- 최대낙폭
     win_rate        NUMERIC(10,4),
@@ -681,8 +724,8 @@ CREATE TABLE backtest_trade (
 
 | 테이블 | 내용 |
 |---|---|
-| `market` | KRX, KOSDAQ |
-| `market_holiday` | 당해 연도 휴장일 |
+| `exchange` | KRX 1건 |
+| `exchange_holiday` | 당해 연도 휴장일 |
 | `stock` | 전 상장종목 (KRX 또는 DART 명단) |
 | `account` | 단타·스윙·모의 3건 |
 | `indicator` | 8종 |

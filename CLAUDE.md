@@ -63,7 +63,12 @@ if profit_rate > ctx.params["take_profit"]:
 
 ### 6. 종목 식별자
 
-`stock_id` 형식은 `{market}:{code}` (예: `KRX:005930`).
+`stock_id` 형식은 `{exchange}:{code}` (예: `KRX:005930`).
+**접두어는 거래소다. 시장 구분(KOSPI/KOSDAQ)이 아니다.**
+
+국내 종목은 KOSPI·KOSDAQ 모두 `KRX:` 접두어를 쓴다.
+시장 구분이 필요하면 `stock.board`를 본다.
+
 종목코드만 단독으로 키로 쓰지 않는다.
 
 ### 7. 비밀값 커밋 금지

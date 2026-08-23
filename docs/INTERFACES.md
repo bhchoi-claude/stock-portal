@@ -185,15 +185,21 @@ class OrderResult:
 네트워크 오류로 응답을 못 받았을 때, 재시도가 중복 주문이 되면 안 된다.
 
 ```
-1. order_request INSERT (status='pending', client_order_id 생성)
-2. broker.submit_order() 호출
-3. 응답 수신 → status 갱신
+1. client_order_id 생성 (ULID)
+2. order_request INSERT (status='pending')
+3. broker.submit_order() 호출
+4. 응답 수신 → status 갱신
 ```
 
-2번에서 예외가 나면 **자동 재시도하지 않는다.**
+3번에서 예외가 나면 **자동 재시도하지 않는다.**
 `get_order_status`로 실제 접수 여부를 조회한 뒤 판단한다.
 
-`client_order_id` 형식: `{account_id}-{YYYYMMDD}-{order_id}`
+`client_order_id`는 **ULID**를 쓴다. 애플리케이션이 INSERT 전에 생성하며
+`order_id`를 참조하지 않는다. 채번 순환이 생기지 않는다.
+
+이 값은 **우리 쪽 멱등성 키**다. 증권사가 사용자 지정 주문 ID를 지원하는지와
+무관하게 사용한다. `order_request.client_order_id`의 UNIQUE 제약이
+중복 주문을 DB 수준에서 차단한다.
 
 ### 2.2 재시작 복구
 
@@ -612,7 +618,7 @@ class TelegramNotifier(Notifier): ...
 
 ```
 config/
-├── accounts.yaml          계좌, 자금 배분
+├── accounts.yaml          자금 배분 (계좌번호는 넣지 않는다)
 ├── strategy_daytrade.yaml 단타 파라미터
 ├── strategy_swing.yaml    스윙 파라미터
 ├── universe.yaml          유니버스 필터 조건
@@ -626,11 +632,20 @@ config/
 ```
 KIWOOM_APP_KEY=
 KIWOOM_APP_SECRET=
+KIWOOM_ACCOUNT_DAYTRADE=
+KIWOOM_ACCOUNT_SWING=
+KIWOOM_ACCOUNT_PAPER=
 ANTHROPIC_API_KEY=
 TELEGRAM_BOT_TOKEN=
 DART_API_KEY=
 DATABASE_URL=
 ```
+
+**계좌번호는 `.env`에만 둔다.** `config/`와 DB 어디에도 두지 않는다.
+`account.account_id`로 해당 환경변수를 찾는다. (`SCHEMA.md` 1장)
+
+`config/accounts.yaml`은 비밀값을 담지 않으므로, 같은 구조의
+`config/accounts.example.yaml`을 커밋해 형식을 남긴다.
 
 ---
 

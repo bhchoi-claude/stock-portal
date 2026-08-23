@@ -50,7 +50,7 @@
 - [ ] PostgreSQL 설치, `portal_db` 생성
 - [ ] 프로젝트 구조 생성, git 초기화, `.gitignore`
 - [ ] `SCHEMA.md` 기준 마이그레이션 작성 및 적용
-- [ ] 기준 데이터 적재: `market`, `market_holiday`, `stock`, `account`, `indicator`
+- [ ] 기준 데이터 적재: `exchange`, `exchange_holiday`, `stock`, `account`, `indicator`
 - [ ] `common/db/` 모델 계층
 - [ ] `common/notify/` 텔레그램 알림
 - [ ] Nginx + systemd 기본 설정
