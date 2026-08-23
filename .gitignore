@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# 가상환경
+.venv/
+venv/
+
+# 비밀값
+.env
+.env.*
+!.env.example
+
+# 로컬 설정 (config/의 공용 yaml은 커밋한다)
+config/*.local.yaml
+config/accounts.yaml
+
+# 로그, 로컬 DB
+logs/
+*.log
+*.db
+*.sqlite3
+
+# 에디터/OS
+.vscode/
+.idea/
+.DS_Store
