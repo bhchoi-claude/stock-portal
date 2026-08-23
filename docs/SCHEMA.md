@@ -111,7 +111,8 @@ CREATE TABLE stock (
     is_suspended    BOOLEAN DEFAULT FALSE,   -- 거래정지
     is_spac         BOOLEAN DEFAULT FALSE,
     is_preferred    BOOLEAN DEFAULT FALSE,   -- 우선주
-    delisted_at     DATE,
+    listed_at       DATE,                    -- 상장일
+    delisted_at     DATE,                    -- 상장폐지일. 행은 삭제하지 않는다
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -123,6 +124,43 @@ CREATE INDEX idx_stock_name ON stock(name);
 
 `exchange`는 **불변**, `board`는 **가변**이다. 이전상장이 일어나면 `board`만 바뀌고
 `stock_id`는 그대로 유지되므로 과거 이력이 끊기지 않는다.
+
+**행을 삭제하지 않는다.** 상장폐지 종목도 `delisted_at`만 채우고 남긴다.
+지우면 백테스트에 생존편향이 생긴다. (`PROJECT.md` 11장)
+
+이 테이블의 `board`, `is_managed`, `is_suspended`는 **현재값 캐시**다.
+과거 시점의 값은 `stock_status`에서 조회한다.
+
+### stock_status
+
+종목 상태의 변경 이력. **시점 조회의 정본이다.**
+
+```sql
+CREATE TABLE stock_status (
+    stock_id        TEXT NOT NULL REFERENCES stock(stock_id),
+    valid_from      DATE NOT NULL,
+    valid_to        DATE,                    -- NULL이면 현재까지 유효
+    board           TEXT NOT NULL,           -- 'KOSPI' | 'KOSDAQ' | 'KONEX'
+    is_managed      BOOLEAN NOT NULL DEFAULT FALSE,
+    is_suspended    BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (stock_id, valid_from)
+);
+```
+
+상태가 **바뀐 날만** 행을 추가한다. 매일 스냅샷을 쌓지 않는다.
+관리종목 지정이나 이전상장은 드물게 일어나므로 종목당 몇 행이면 충분하다.
+
+특정 시점의 상태는 이렇게 조회한다.
+
+```sql
+WHERE valid_from <= :as_of AND (valid_to IS NULL OR valid_to > :as_of)
+```
+
+**과거 유니버스를 구성할 때는 `stock`이 아니라 이 테이블을 본다.**
+`stock`의 현재값으로 과거를 판단하면 미래 참조가 된다.
+"오늘 관리종목인 종목을 2년 전 백테스트에서도 제외"하는 실수가 여기서 나온다.
+
+일 1회 갱신 배치가 변경을 감지해 `stock`(현재값)과 `stock_status`(이력)를 함께 쓴다.
 
 ### account
 
@@ -164,9 +202,54 @@ CREATE TABLE price_daily (
     close           NUMERIC(20,4) NOT NULL,
     volume          BIGINT NOT NULL,
     value           NUMERIC(20,0),           -- 거래대금
+    adj_factor      NUMERIC(20,10) NOT NULL DEFAULT 1,  -- 누적 조정계수. 파생값
     PRIMARY KEY (stock_id, trade_date)
 );
 ```
+
+**저장하는 값은 원주가다.** 그날 실제로 거래된 가격이며, 한 번 쓰면 바뀌지 않는다.
+실전 체결 대조와 호가단위 검증에 원주가가 필요하기 때문이다.
+
+`adj_factor`는 `corporate_action`에서 계산한 **파생값**이다.
+
+```
+조정가   = close  * adj_factor
+조정거래량 = volume / adj_factor
+```
+
+5:1 분할이면 분할 이전 행의 `adj_factor`가 `0.2`가 되고, 이후 행은 `1.0`이다.
+최신 행의 `adj_factor`는 항상 `1.0`이다.
+
+### corporate_action
+
+분할·병합·증자 등 조정 이벤트. **`adj_factor` 계산의 정본이다.**
+
+```sql
+CREATE TABLE corporate_action (
+    action_id       BIGSERIAL PRIMARY KEY,
+    stock_id        TEXT NOT NULL REFERENCES stock(stock_id),
+    effective_date  DATE NOT NULL,           -- 적용일 (권리락일 기준)
+    action_type     TEXT NOT NULL,           -- 'split'|'merge'|'bonus'|'rights'|'dividend'
+    ratio           NUMERIC(20,10),          -- 분할·병합·무상증자 비율
+    adjusts_price   BOOLEAN NOT NULL,        -- 가격 조정 대상 여부
+    source          TEXT,                    -- 'dart'|'kiwoom'|'krx'|'manual'
+    detail          JSONB,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (stock_id, effective_date, action_type)
+);
+```
+
+| action_type | adjusts_price | 비고 |
+|---|---|---|
+| `split` 액면분할 | TRUE | 비율이 명확하다 |
+| `merge` 액면병합 | TRUE | |
+| `bonus` 무상증자 | TRUE | |
+| `rights` 유상증자 | FALSE | 권리락 이론가 계산이 복잡해 초기에는 제외한다 |
+| `dividend` 현금배당 | FALSE | 기록만 남긴다. 국내 증권사의 수정주가도 배당은 반영하지 않는다 |
+
+**이벤트를 뒤늦게 발견해도 시세 데이터를 건드리지 않는다.**
+`corporate_action`에 행을 넣고 해당 종목의 `adj_factor`만 다시 계산하면 된다.
+시세 테이블이 불변이라는 점이 이 구조의 핵심이다.
 
 ### price_minute
 
@@ -185,6 +268,11 @@ CREATE TABLE price_minute (
 
 **월 단위 파티셔닝을 적용한다.** 전 종목 1분봉은 연 30GB 수준이라 단일 테이블로
 두면 조회가 느려진다. 백테스트가 특정 기간만 읽는 패턴이므로 파티션 효과가 크다.
+
+**분봉에는 조정계수를 두지 않는다.** 단타는 당일 청산이라 조정 이벤트가 걸칠 일이
+거의 없고, 연 30GB 테이블에 갱신되는 컬럼을 두는 비용이 크다.
+분봉으로 여러 날에 걸친 지표를 계산해야 하면 `price_daily.adj_factor`를
+날짜로 조인해서 쓴다.
 
 ### 수급
 
@@ -727,11 +815,12 @@ CREATE TABLE backtest_trade (
 | `exchange` | KRX 1건 |
 | `exchange_holiday` | 당해 연도 휴장일 |
 | `stock` | 전 상장종목 (KRX 또는 DART 명단) |
+| `stock_status` | 적재 시점의 상태 1행씩 |
 | `account` | 단타·스윙·모의 3건 |
 | `indicator` | 8종 |
 | `source` | 텔레그램 채널, DART |
 
-`keyword`는 비어 있는 상태로 시작한다. 운영하면서 채워진다.
+`keyword`와 `corporate_action`은 비어 있는 상태로 시작한다. 운영하면서 채워진다.
 
 ---
 
@@ -743,3 +832,5 @@ CREATE TABLE backtest_trade (
 | 백업 방식 | `pg_dump` 일 1회 예정. 보관 기간 미정 |
 | `position` 대조 주기 | 장중 N분 간격 + 장 마감 후 1회 |
 | 시장 전체 수급 지표 | `trading_flow` 합산 vs `indicator_value` 직접 저장 |
+| `corporate_action` 데이터 출처 | 키움 API / DART 공시 / KRX 중 확인 필요 |
+| 유상증자 가격 조정 | 초기에는 `adjusts_price = FALSE`. 발생 빈도 확인 후 재검토 |
