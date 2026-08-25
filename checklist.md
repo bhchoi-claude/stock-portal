@@ -67,7 +67,7 @@
 - [ ] Nginx + systemd 기본 설정
 - [x] pytest 셋업 (`pytest.ini`, `conftest.py`, `requirements-dev.txt`)
   - [x] 스키마 드리프트 테스트 — DB 없이 돈다
-  - [ ] **DB 통합 테스트 서버에서 실행** — 로컬은 DB 에 닿지 않아 skip 된다
+  - [x] **DB 통합 테스트 서버에서 실행** (2026-08-26, 20 passed) — 로컬은 skip 된다
 - [ ] 브로커 목(mock) — ROADMAP 에 없으나 Phase 2 에 필요
 
 ## Phase 1 완료 기준
