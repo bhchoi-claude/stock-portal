@@ -24,7 +24,8 @@
 - [x] 공인 IP 확인·등록 (값은 `.env` 의 `KIWOOM_ALLOWED_IP`)
 - [ ] 토스증권 오픈API 신청 (보류 가능)
 - [x] GitHub 프라이빗 저장소 생성 (`bhchoi-claude/stock-portal`)
-- [ ] **완료 기준 — 모의투자 계좌로 시세 조회 성공**
+- [x] **완료 기준 — 모의투자 계좌로 시세 조회 성공** (2026-08-25, ka10001)
+- [ ] 실전 앱키 발급·IP 등록 — Phase 9 진입 전
 
 ## 마이그레이션
 
@@ -47,7 +48,9 @@
   - 공유기 DHCP 예약, BIOS 전원복구 자동부팅
 - [x] PostgreSQL 설치, `portal_db` 생성 (18.6)
 - [x] 서버에 venv 구성 (`.venv/`) — Ubuntu 26.04 는 PEP 668 로 시스템 설치를 막는다
-- [ ] `.env` 나머지 키 채우기 (`DATABASE_URL` 은 완료)
+- [ ] `.env` 나머지 키 채우기 (`DATABASE_URL`, 키움 모의 키는 완료)
+  - [ ] `DART_API_KEY`, `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`
+  - [ ] `KIWOOM_ACCOUNT_*` 3건, `KIWOOM_ALLOWED_IP`
 - [ ] 기준 데이터 적재 스크립트
   - [ ] `exchange_holiday` — 당해 연도 휴장일. 출처 미정
   - [ ] `stock` — 전 상장종목. KRX / DART 중 출처 미정

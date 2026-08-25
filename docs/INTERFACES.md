@@ -221,6 +221,55 @@ class RateLimitError(TransientError):
 조회는 `TransientError`에 한해 지수 백오프로 재시도한다.
 **주문은 자동 재시도하지 않는다.** 2.1 참조.
 
+### 2.4 키움 REST 실측 규격
+
+2026-08-25 모의투자 계좌로 확인한 값이다. 추측이 아니라 실제 응답이다.
+
+**도메인**
+
+| 구분 | 도메인 |
+|---|---|
+| 모의투자 | `https://mockapi.kiwoom.com` |
+| 실전 | `https://api.kiwoom.com` |
+
+**실전과 모의는 앱키가 별도다.** 모의 앱키로 실전 도메인에 접속하면
+`투자구분(실전/모의)이 달라서 Appkey를 사용할수가 없습니다` 로 거부된다.
+어댑터는 `account.is_paper` 로 도메인과 키를 함께 골라야 한다.
+
+**접근토큰**
+
+```
+POST /oauth2/token
+Content-Type: application/json;charset=UTF-8
+{ "grant_type": "client_credentials", "appkey": "...", "secretkey": "..." }
+```
+
+응답은 `token`, `token_type`(`Bearer`), `expires_dt`, `return_code`, `return_msg`.
+`return_code = 0` 이 정상이다. **HTTP 200 이어도 `return_code` 를 봐야 한다.**
+
+`expires_dt` 는 `YYYYMMDDHHMMSS` 이고 발급 시점 기준 **약 24시간** 뒤다.
+관측상 **KST 로 보인다.** UTC 로 파싱하면 9시간 어긋나므로 `Asia/Seoul` 로 읽는다.
+토큰은 캐시하고 만료 전에 갱신한다. 매 호출마다 발급받지 않는다.
+
+**조회 요청**
+
+```
+POST /api/dostk/stkinfo
+authorization: Bearer {token}
+api-id: ka10001
+{ "stk_cd": "005930" }
+```
+
+**`stk_cd` 는 거래소 접두어 없는 순수 종목코드다.**
+`KRX:005930` 을 보내면 `return_code = 5` 로 거부된다.
+
+따라서 어댑터는 `stock_id` 를 그대로 넘기지 않고 `stock.code` 를 쓴다.
+`stock_id` 에서 접두어를 떼는 변환이 브로커 경계에 들어간다.
+이 변환은 **어댑터 안에만** 둔다. 전략과 피드는 `stock_id` 만 다룬다.
+
+`ka10001`(주식기본정보요청) 응답은 47개 필드이며 `stk_nm`, `cur_prc`,
+`open_pric`, `high_pric`, `low_pric`, `base_pric`, `per`, `eps`, `pbr` 등을 담는다.
+
 ---
 
 ## 3. DataFeed — 데이터 공급
@@ -653,8 +702,10 @@ config/
 `.env`에는 비밀값만 둔다. git에 커밋하지 않는다.
 
 ```
-KIWOOM_APP_KEY=
-KIWOOM_APP_SECRET=
+KIWOOM_APP_KEY_PAPER=
+KIWOOM_APP_SECRET_PAPER=
+KIWOOM_APP_KEY_LIVE=
+KIWOOM_APP_SECRET_LIVE=
 KIWOOM_ACCOUNT_DAYTRADE=
 KIWOOM_ACCOUNT_SWING=
 KIWOOM_ACCOUNT_PAPER=
@@ -676,7 +727,8 @@ DATABASE_URL=
 
 | 항목 | 비고 |
 |---|---|
-| 키움 API 실제 응답 형식 | 문서 확인 후 어댑터 매핑 확정 |
 | 웹소켓 재연결 정책 | 끊김 시 재구독 절차 |
 | `get_candles` 호출 한도 | 키움 제한 확인 후 캐시 전략 결정 |
 | 백테스트 체결 모델 | 종가 체결 vs 다음 봉 시가. 스윙/단타 별도 |
+| 분봉 과거 조회 가능 범위 | Phase 10 시작 시점을 좌우한다. 확인 필요 |
+| 모의투자의 API 지원 범위 | 실전과 다른 부분이 있는지. Phase 8 검증 계획에 영향 |
