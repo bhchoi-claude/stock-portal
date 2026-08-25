@@ -78,8 +78,9 @@ PostgreSQL 방언 파싱만 했다.
 - 실제 실행 시점의 오류 (타입 불일치, 예약어 충돌, 권한)
 - 파티션 부모-자식 제약이 실제로 성립하는지
 
-**서버에서 적용해봐야 완료다.** `python -m common.db.migrate apply` 로 적용하고
-`\d` 로 테이블 수를 확인해야 한다.
+**2026-08-24 서버 적용 완료.** PostgreSQL 18.6 에서 `apply` 가 정상 동작했다.
+테이블 50개(본체 32 + `schema_migration` + 파티션 17), `exchange` 1건, `indicator` 8종 확인.
+위의 "확인하지 못한 것" 중 실행 시점 오류와 파티션 제약은 이걸로 해소됐다.
 
 ### 예약어를 검토했다
 
@@ -88,3 +89,36 @@ PostgreSQL 방언 파싱만 했다.
 `order_request` 를 유지했다.
 
 실행 검증을 못 했으므로 이 판단도 서버 적용으로 확인해야 한다.
+
+---
+
+## 2026-08-24 — 서버 구성
+
+### venv 를 쓴다
+
+Ubuntu 26.04 는 PEP 668 로 시스템 파이썬에 직접 설치하는 것을 막는다.
+`pip install` 이 `externally-managed-environment` 로 실패한다.
+
+`--break-system-packages` 를 쓰지 않고 `~/stock-portal/.venv` 를 만들었다.
+24시간 돌릴 서버의 시스템 파이썬을 건드리는 위험을 감수할 이유가 없다.
+
+**systemd 유닛을 쓸 때 `.venv/bin/python` 을 명시해야 한다.**
+시스템 파이썬으로 실행하면 psycopg 를 찾지 못한다.
+
+### 서버는 배포 키로 pull 한다
+
+비공개 저장소라 서버에도 인증이 필요하다. 계정 토큰 대신 **읽기 전용 배포 키**를 썼다.
+서버는 pull 만 하므로 쓰기 권한이 필요 없고, 키가 새도 저장소 하나로 피해가 제한된다.
+
+`~/.ssh/config` 의 `github-stockportal` 호스트 별칭으로 접근한다.
+암호 없는 키다. systemd 가 자동 pull 할 때 암호를 물으면 멈추기 때문이다.
+
+### GitHub 계정이 두 개다
+
+저장소는 `bhchoi-claude` 소유이고, 개발 PC 는 `bhchoihaikorea` 로 인증돼 있다.
+`bhchoihaikorea` 를 협업자로 추가해서 push 한다. 커밋 author 도 이쪽이다.
+
+### 공인 IP 는 문서에 적지 않는다
+
+`.env` 의 `KIWOOM_ALLOWED_IP` 하나만 정본으로 둔다.
+비밀값은 아니지만 집 네트워크를 특정하는 정보라 계좌번호·키와 같은 방침을 적용했다.

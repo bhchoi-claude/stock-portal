@@ -23,7 +23,7 @@
 - [x] DART API 키 발급
 - [x] 공인 IP 확인·등록 (값은 `.env` 의 `KIWOOM_ALLOWED_IP`)
 - [ ] 토스증권 오픈API 신청 (보류 가능)
-- [ ] GitHub 프라이빗 저장소 생성
+- [x] GitHub 프라이빗 저장소 생성 (`bhchoi-claude/stock-portal`)
 - [ ] **완료 기준 — 모의투자 계좌로 시세 조회 성공**
 
 ## 마이그레이션
@@ -34,8 +34,9 @@
 - [x] `002_seed_static.sql` — `exchange` 1건, `indicator` 8종
 - [x] sqlglot 파싱 검증, FK 순서·컬럼 중복·인덱스 대상 점검
 - [x] 파티션 DDL 생성 결과 검증 (2026-08 ~ 2027-12, 17개)
-- [ ] **서버에서 실제 적용** — 로컬에 PostgreSQL 이 없어 미실행
-- [ ] 적용 후 `\d` 로 테이블 32개·인덱스 확인
+- [x] **서버에서 실제 적용** (2026-08-24, PostgreSQL 18.6)
+- [x] 테이블 50개 확인 (본체 32 + `schema_migration` + 파티션 17)
+- [x] 시드 확인 — `exchange` 1건, `indicator` 8종
 
 ## 남은 Phase 1 작업
 
@@ -44,8 +45,9 @@
   - **배터리 충전 임계값 60~80% 제한**
   - 커널 자동 재부팅 비활성
   - 공유기 DHCP 예약, BIOS 전원복구 자동부팅
-- [ ] PostgreSQL 설치, `portal_db` 생성
-- [ ] `.env` 작성 (`DATABASE_URL`, `KIWOOM_ACCOUNT_*` 등)
+- [x] PostgreSQL 설치, `portal_db` 생성 (18.6)
+- [x] 서버에 venv 구성 (`.venv/`) — Ubuntu 26.04 는 PEP 668 로 시스템 설치를 막는다
+- [ ] `.env` 나머지 키 채우기 (`DATABASE_URL` 은 완료)
 - [ ] 기준 데이터 적재 스크립트
   - [ ] `exchange_holiday` — 당해 연도 휴장일. 출처 미정
   - [ ] `stock` — 전 상장종목. KRX / DART 중 출처 미정
