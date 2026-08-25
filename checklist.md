@@ -49,9 +49,13 @@
 - [x] PostgreSQL 설치, `portal_db` 생성 (18.6)
 - [x] 서버에 venv 구성 (`.venv/`) — Ubuntu 26.04 는 PEP 668 로 시스템 설치를 막는다
 - [ ] `.env` 나머지 키 채우기 (`DATABASE_URL`, 키움 모의 키는 완료)
-  - [ ] `DART_API_KEY`, `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`
+  - [ ] `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — 알림 테스트에 필요
+  - [ ] `DART_API_KEY`, `ANTHROPIC_API_KEY`
   - [ ] `KIWOOM_ACCOUNT_*` 3건, `KIWOOM_ALLOWED_IP`
+  - [ ] `KRX_API_KEY` — 오픈API 승인 후
+- [ ] KRX 오픈API 사용 신청 — 승인 대기. 승인 전에는 로더를 쓰지 않는다
 - [ ] 기준 데이터 적재 스크립트 — **출처는 KRX 로 확정** (2026-08-26)
+  - [ ] 응답 실측 후 필드 매핑 확정. 규격을 추정해서 쓰지 않는다
   - [ ] `exchange_holiday` — 당해 연도 휴장일. KRX 매매거래일정
   - [ ] `stock` — 전 상장종목. KRX 정보데이터시스템
   - [ ] `stock_status` — 적재 시점 상태 1행씩
@@ -63,7 +67,13 @@
   - [x] `master.py` upsert·조회
   - [x] `events.py` `event_log` 기록
   - [ ] 나머지 26개 테이블 — 쓰는 시점에 추가한다. 미리 만들지 않는다
-- [ ] `common/notify/` 텔레그램 알림
+- [x] `common/notify/` 텔레그램 알림
+  - [x] `base.py` `Notifier` 인터페이스
+  - [x] `telegram.py` `TelegramNotifier` — 평문 발송, `ok` 판정, 토큰 비노출
+  - [x] `python -m common.notify` 테스트 발송 CLI
+  - [ ] **서버에서 실제 발송 확인** — 토큰·chat_id 가 있어야 한다
+  - [ ] 중복 억제 (`event_log.notified`) — 발송 주체가 생기는 Phase 3 에서
+- [x] `common/env.py` — `.env` 읽기를 한 곳으로 모음
 - [ ] Nginx + systemd 기본 설정
 - [x] pytest 셋업 (`pytest.ini`, `conftest.py`, `requirements-dev.txt`)
   - [x] 스키마 드리프트 테스트 — DB 없이 돈다
