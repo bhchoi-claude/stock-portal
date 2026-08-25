@@ -1,0 +1,185 @@
+# 기준 데이터(휴장일·종목·종목상태·계좌·소스) 테이블 접근 함수
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+
+import psycopg
+
+from .models import Account, Holiday, Source, Stock, StockStatus
+
+# SELECT 와 dataclass 필드 순서를 한 곳에서 맞춘다. 어긋나면 test_schema_drift 가 잡는다.
+STOCK_COLUMNS = (
+    "stock_id",
+    "exchange",
+    "code",
+    "board",
+    "name",
+    "sector",
+    "listed_shares",
+    "is_managed",
+    "is_suspended",
+    "is_spac",
+    "is_preferred",
+    "listed_at",
+    "delisted_at",
+)
+
+
+def upsert_holidays(cur: psycopg.Cursor, holidays: Sequence[Holiday]) -> int:
+    """휴장일을 삽입하거나 이름을 갱신한다."""
+    if not holidays:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO exchange_holiday (exchange, holiday_date, name)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (exchange, holiday_date) DO UPDATE SET name = EXCLUDED.name
+        """,
+        [(h.exchange, h.holiday_date, h.name) for h in holidays],
+    )
+    return len(holidays)
+
+
+def upsert_stocks(cur: psycopg.Cursor, stocks: Sequence[Stock]) -> int:
+    """종목을 삽입하거나 갱신한다. 행은 삭제하지 않는다 (생존편향 방지).
+
+    sector·listed_shares·상장일은 COALESCE 로 덮어쓴다. 출처마다 주는 필드가
+    달라서, 그 필드가 없는 출처로 적재할 때 기존 값을 지우면 안 된다.
+    """
+    if not stocks:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO stock (
+            stock_id, exchange, code, board, name, sector, listed_shares,
+            is_managed, is_suspended, is_spac, is_preferred,
+            listed_at, delisted_at, updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        ON CONFLICT (stock_id) DO UPDATE SET
+            board         = EXCLUDED.board,
+            name          = EXCLUDED.name,
+            sector        = COALESCE(EXCLUDED.sector, stock.sector),
+            listed_shares = COALESCE(EXCLUDED.listed_shares, stock.listed_shares),
+            is_managed    = EXCLUDED.is_managed,
+            is_suspended  = EXCLUDED.is_suspended,
+            is_spac       = EXCLUDED.is_spac,
+            is_preferred  = EXCLUDED.is_preferred,
+            listed_at     = COALESCE(EXCLUDED.listed_at, stock.listed_at),
+            delisted_at   = COALESCE(EXCLUDED.delisted_at, stock.delisted_at),
+            updated_at    = NOW()
+        """,
+        [
+            (
+                s.stock_id,
+                s.exchange,
+                s.code,
+                s.board,
+                s.name,
+                s.sector,
+                s.listed_shares,
+                s.is_managed,
+                s.is_suspended,
+                s.is_spac,
+                s.is_preferred,
+                s.listed_at,
+                s.delisted_at,
+            )
+            for s in stocks
+        ],
+    )
+    return len(stocks)
+
+
+def open_stock_status(cur: psycopg.Cursor, statuses: Sequence[StockStatus]) -> int:
+    """열린 상태 행이 없는 종목에만 새 행을 연다.
+
+    변경 감지와 이력 종료(valid_to 채우기)는 Phase 2 의 상태 갱신 배치가 맡는다.
+    여기서는 적재 시점의 최초 1행만 만든다.
+    """
+    if not statuses:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO stock_status (stock_id, valid_from, valid_to, board,
+                                  is_managed, is_suspended)
+        SELECT %s, %s, NULL, %s, %s, %s
+        WHERE NOT EXISTS (
+            SELECT 1 FROM stock_status WHERE stock_id = %s AND valid_to IS NULL
+        )
+        ON CONFLICT (stock_id, valid_from) DO NOTHING
+        """,
+        [
+            (
+                s.stock_id,
+                s.valid_from,
+                s.board,
+                s.is_managed,
+                s.is_suspended,
+                s.stock_id,
+            )
+            for s in statuses
+        ],
+    )
+    return len(statuses)
+
+
+def upsert_accounts(cur: psycopg.Cursor, accounts: Sequence[Account]) -> int:
+    """계좌를 삽입하거나 갱신한다. 계좌번호는 DB 에 넣지 않는다 (SCHEMA.md 1장)."""
+    if not accounts:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO account (account_id, broker, strategy, is_paper, currency, is_active)
+        VALUES (%s, %s, %s, %s, %s, %s)
+        ON CONFLICT (account_id) DO UPDATE SET
+            broker    = EXCLUDED.broker,
+            strategy  = EXCLUDED.strategy,
+            is_paper  = EXCLUDED.is_paper,
+            currency  = EXCLUDED.currency,
+            is_active = EXCLUDED.is_active
+        """,
+        [
+            (a.account_id, a.broker, a.strategy, a.is_paper, a.currency, a.is_active)
+            for a in accounts
+        ],
+    )
+    return len(accounts)
+
+
+def upsert_sources(cur: psycopg.Cursor, sources: Sequence[Source]) -> int:
+    """수집 소스를 삽입하거나 갱신한다. source_id 는 DB 가 매긴다."""
+    if not sources:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO source (kind, identifier, name, weight, is_active)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (kind, identifier) DO UPDATE SET
+            name      = EXCLUDED.name,
+            weight    = EXCLUDED.weight,
+            is_active = EXCLUDED.is_active
+        """,
+        [(s.kind, s.identifier, s.name, s.weight, s.is_active) for s in sources],
+    )
+    return len(sources)
+
+
+def get_stock(cur: psycopg.Cursor, stock_id: str) -> Stock | None:
+    """종목 한 건을 읽는다. 없으면 None."""
+    cur.execute(
+        f"SELECT {', '.join(STOCK_COLUMNS)} FROM stock WHERE stock_id = %s",
+        (stock_id,),
+    )
+    row = cur.fetchone()
+    return Stock(*row) if row else None
+
+
+def count_stocks(cur: psycopg.Cursor, *, listed_only: bool = True) -> int:
+    """종목 수를 센다. 적재 결과 확인용."""
+    if listed_only:
+        cur.execute("SELECT COUNT(*) FROM stock WHERE delisted_at IS NULL")
+    else:
+        cur.execute("SELECT COUNT(*) FROM stock")
+    return cur.fetchone()[0]

@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import pathlib
 import sys
 
 MIGRATIONS_DIR = pathlib.Path(__file__).parent / "migrations"
-PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 BOOTSTRAP = """
 CREATE TABLE IF NOT EXISTS schema_migration (
@@ -18,22 +16,6 @@ CREATE TABLE IF NOT EXISTS schema_migration (
     applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 """
-
-
-def load_database_url() -> str:
-    """환경변수를 먼저 보고, 없으면 프로젝트 루트의 .env 에서 읽는다."""
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        return url
-
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        for raw in env_path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if line.startswith("DATABASE_URL="):
-                return line.split("=", 1)[1].strip().strip("\"'")
-
-    raise SystemExit("DATABASE_URL 이 없습니다. 환경변수나 .env 에 설정하세요.")
 
 
 def migration_files() -> list[pathlib.Path]:
@@ -60,7 +42,15 @@ def main(argv: list[str]) -> int:
         print("psycopg 가 없습니다. pip install -r requirements.txt 를 실행하세요.")
         return 2
 
-    with psycopg.connect(load_database_url()) as conn:
+    from .conn import load_database_url
+
+    try:
+        database_url = load_database_url()
+    except RuntimeError as exc:
+        print(exc)
+        return 2
+
+    with psycopg.connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(BOOTSTRAP)
             cur.execute("SELECT version, checksum FROM schema_migration")
@@ -93,14 +83,13 @@ def main(argv: list[str]) -> int:
             return 0
 
         for version, path, digest in pending:
-            with conn.transaction():
-                with conn.cursor() as cur:
-                    cur.execute(path.read_text(encoding="utf-8"))
-                    cur.execute(
-                        "INSERT INTO schema_migration (version, filename, checksum)"
-                        " VALUES (%s, %s, %s)",
-                        (version, path.name, digest),
-                    )
+            with conn.transaction(), conn.cursor() as cur:
+                cur.execute(path.read_text(encoding="utf-8"))
+                cur.execute(
+                    "INSERT INTO schema_migration (version, filename, checksum)"
+                    " VALUES (%s, %s, %s)",
+                    (version, path.name, digest),
+                )
             print(f"  적용    {path.name}")
 
         print(f"\n{len(pending)}건 적용 완료.")
