@@ -1,0 +1,19 @@
+# 정보수집 소스. Phase 5 에서 사용한다
+#
+# kind        'telegram' | 'dart'
+# identifier  텔레그램은 채널 사용자명, DART 는 'dart'
+# weight      신뢰도 가중치. 집계에서 쓴다
+
+sources:
+  - kind: dart
+    identifier: dart
+    name: 전자공시 DART
+    weight: 1.0
+    is_active: true
+
+  # 텔레그램 채널은 구독 목록이 정해지면 추가한다. 형식은 아래와 같다
+  # - kind: telegram
+  #   identifier: some_channel
+  #   name: 채널 이름
+  #   weight: 1.0
+  #   is_active: true
