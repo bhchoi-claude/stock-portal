@@ -165,3 +165,78 @@ A-1 결정 자체는 유효하다. 근거가 이전상장 대응이었지 키움
 
 셸에서 `"{\"appkey\":\"$VAR\"}"` 식으로 JSON 을 조립하면 값에 특수문자가
 하나만 있어도 깨진다. JSON 은 코드로 만든다.
+
+---
+
+## 2026-08-26 — 기준 데이터 출처 확정, `common/db/` 모델 계층
+
+### 기준 데이터 정본은 KRX 다
+
+`stock` 은 `board`·`listed_shares`·`listed_at`·`is_spac`·`is_preferred` 를 요구한다.
+DART `corpCode` 에는 시장 구분과 상장주식수가 없고, 키움 종목 리스트 API 는
+아직 실측하지 않았다. 확인되지 않은 규격 위에 적재 스크립트를 쌓지 않는다.
+
+DART 고유번호는 Phase 5 정보수집에서 별도로 매핑한다. 지금 섞지 않는다.
+
+휴장일도 KRX 매매거래일정을 쓴다. 공휴일 달력에는 임시휴장과 조기폐장이 없다.
+
+### ORM 을 쓰지 않는다
+
+`psycopg` 위에 함수를 얹었다. SQLAlchemy 를 넣지 않은 이유는 두 가지다.
+
+스키마가 마이그레이션 SQL 로 이미 확정돼 있어 모델이 정의가 아니라 사본이다.
+사본이 둘이면 어긋난다. 그래서 사본을 얇게 두고 어긋남을 테스트로 잡는 쪽을 골랐다.
+
+그리고 `price_minute` 처럼 대량 적재가 필요한 테이블이 있다. ORM 계층은
+그 지점에서 어차피 벗겨내게 된다.
+
+### 6개 테이블만 만들었다
+
+`exchange`, `exchange_holiday`, `stock`, `stock_status`, `account`, `source`
+그리고 `event_log`. Phase 1 적재에 필요한 것뿐이다.
+
+나머지 26개는 쓰는 시점에 추가한다. 지금 만들면 쓰이기 전에 스키마가 바뀐다.
+
+### `load_database_url` 을 `conn.py` 로 옮겼다
+
+`migrate.py` 에 있던 것을 옮기고 `migrate.py` 가 가져다 쓴다.
+`.env` 파싱이 두 곳에 있으면 한쪽만 고쳐진다. 특히 `.strip()` 처리가 그렇다.
+(2026-08-25 에 앱키에 보이지 않는 문자가 섞였던 건과 같은 종류의 문제다.)
+
+`migrate.py` 는 `psycopg` 확인이 끝난 **뒤에** 이 import 를 한다.
+`conn.py` 가 최상단에서 `psycopg` 를 import 하기 때문에, 위로 올리면
+"psycopg 가 없습니다" 안내가 뜨기 전에 ImportError 로 죽는다.
+
+같은 이유로 `common/db/__init__.py` 는 비워 두었다. 여기서 재export 하면
+`python -m common.db.migrate` 가 패키지 import 단계에서 `psycopg` 를 요구한다.
+
+### upsert 는 `COALESCE` 로 덮는다
+
+`sector`·`listed_shares`·`listed_at`·`delisted_at` 은 `COALESCE` 를 거친다.
+KRX 안에서도 목록마다 주는 필드가 다르다. 필드가 없는 출처로 재적재할 때
+`EXCLUDED` 를 그대로 쓰면 기존 값이 NULL 로 지워진다.
+
+`delisted_at` 도 마찬가지다. 한 번 채워진 폐지일을 되돌리지 않는다.
+행을 지우지 않기로 한 A-6 결정과 같은 방향이다.
+
+### `stock_status` 는 최초 1행만 연다
+
+`open_stock_status` 는 열린 행(`valid_to IS NULL`)이 없을 때만 삽입한다.
+변경 감지와 이력 종료는 Phase 2 의 상태 갱신 배치가 맡는다.
+Phase 1 에서 이력 관리까지 만들면 수집기 없이 검증할 방법이 없다.
+
+### 스키마 드리프트 테스트
+
+`tests/test_schema_drift.py` 가 `001_initial.sql` 을 파싱해서 dataclass 필드와
+대조한다. DB 없이 돈다.
+
+`get_stock` 이 `Stock(*row)` 로 만들기 때문에 `STOCK_COLUMNS` 순서가 어긋나면
+값이 조용히 뒤섞인다. 이 순서도 함께 검사한다.
+
+### DB 통합 테스트는 서버에서만 돈다
+
+`DATABASE_URL` 이 없으면 skip 한다. 개발 PC 에는 `.env` 가 없고,
+서버 PostgreSQL 은 localhost 만 수신해서 Tailscale 로도 닿지 않는다(5432 거부).
+
+**따라서 pull 한 뒤 서버에서 한 번 돌려야 실제로 검증된 것이다.**
+테스트는 커밋 없이 롤백하므로 운영 데이터를 건드리지 않는다.

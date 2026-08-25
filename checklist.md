@@ -51,16 +51,24 @@
 - [ ] `.env` 나머지 키 채우기 (`DATABASE_URL`, 키움 모의 키는 완료)
   - [ ] `DART_API_KEY`, `TELEGRAM_BOT_TOKEN`, `ANTHROPIC_API_KEY`
   - [ ] `KIWOOM_ACCOUNT_*` 3건, `KIWOOM_ALLOWED_IP`
-- [ ] 기준 데이터 적재 스크립트
-  - [ ] `exchange_holiday` — 당해 연도 휴장일. 출처 미정
-  - [ ] `stock` — 전 상장종목. KRX / DART 중 출처 미정
+- [ ] 기준 데이터 적재 스크립트 — **출처는 KRX 로 확정** (2026-08-26)
+  - [ ] `exchange_holiday` — 당해 연도 휴장일. KRX 매매거래일정
+  - [ ] `stock` — 전 상장종목. KRX 정보데이터시스템
   - [ ] `stock_status` — 적재 시점 상태 1행씩
   - [ ] `account` — 3건 (계좌번호는 넣지 않는다)
   - [ ] `source` — 텔레그램 채널, DART
-- [ ] `common/db/` 모델 계층
+- [x] `common/db/` 모델 계층 — 기준 데이터 6종 + `event_log`
+  - [x] `conn.py` 커넥션·트랜잭션, `load_database_url` 을 여기로 통합
+  - [x] `models.py` dataclass 6종, `make_stock_id`
+  - [x] `master.py` upsert·조회
+  - [x] `events.py` `event_log` 기록
+  - [ ] 나머지 26개 테이블 — 쓰는 시점에 추가한다. 미리 만들지 않는다
 - [ ] `common/notify/` 텔레그램 알림
 - [ ] Nginx + systemd 기본 설정
-- [ ] pytest 셋업 + 브로커 목(mock) — ROADMAP 에 없으나 Phase 2 에 필요
+- [x] pytest 셋업 (`pytest.ini`, `conftest.py`, `requirements-dev.txt`)
+  - [x] 스키마 드리프트 테스트 — DB 없이 돈다
+  - [ ] **DB 통합 테스트 서버에서 실행** — 로컬은 DB 에 닿지 않아 skip 된다
+- [ ] 브로커 목(mock) — ROADMAP 에 없으나 Phase 2 에 필요
 
 ## Phase 1 완료 기준
 
