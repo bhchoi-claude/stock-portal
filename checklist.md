@@ -17,6 +17,15 @@
 - [ ] A-9 `indicator_value.is_final` — Phase 3 전
 - [ ] A-10 `regime_override` 테이블 — Phase 3 전
 
+## Phase 0 — 사전 준비
+
+- [x] 키움 REST API 신청 / 모의투자 계좌 / 계좌 추가 개설
+- [x] DART API 키 발급
+- [x] 공인 IP 확인·등록 (값은 `.env` 의 `KIWOOM_ALLOWED_IP`)
+- [ ] 토스증권 오픈API 신청 (보류 가능)
+- [ ] GitHub 프라이빗 저장소 생성
+- [ ] **완료 기준 — 모의투자 계좌로 시세 조회 성공**
+
 ## 마이그레이션
 
 - [x] 디렉토리 구조 (`common/db/migrations/`)
