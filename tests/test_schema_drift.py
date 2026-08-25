@@ -9,7 +9,11 @@ import pytest
 from common.db.master import STOCK_COLUMNS
 from common.db.models import Account, Exchange, Holiday, Source, Stock, StockStatus
 
-DDL = pathlib.Path("common/db/migrations/001_initial.sql").read_text(encoding="utf-8")
+# 실행 위치와 무관하게 읽는다
+DDL_PATH = (
+    pathlib.Path(__file__).resolve().parents[1] / "common/db/migrations/001_initial.sql"
+)
+DDL = DDL_PATH.read_text(encoding="utf-8")
 
 CONSTRAINT_KEYWORDS = ("PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT")
 
