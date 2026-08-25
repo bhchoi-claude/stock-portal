@@ -2,30 +2,17 @@
 
 from __future__ import annotations
 
-import os
-import pathlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 
 import psycopg
 
-PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[2]
+from ..env import require_env
 
 
 def load_database_url() -> str:
-    """환경변수를 먼저 보고, 없으면 프로젝트 루트의 .env 에서 읽는다."""
-    url = os.environ.get("DATABASE_URL")
-    if url:
-        return url.strip()
-
-    env_path = PROJECT_ROOT / ".env"
-    if env_path.exists():
-        for raw in env_path.read_text(encoding="utf-8").splitlines():
-            line = raw.strip()
-            if line.startswith("DATABASE_URL="):
-                return line.split("=", 1)[1].strip().strip("\"'")
-
-    raise RuntimeError("DATABASE_URL 이 없습니다. 환경변수나 .env 에 설정하세요.")
+    """DATABASE_URL 을 읽는다. 없으면 RuntimeError."""
+    return require_env("DATABASE_URL")
 
 
 @contextmanager
