@@ -105,6 +105,9 @@ Cloudflare Tunnel + Zero Trust Access를 추가한다. 지금은 구현하지 �
 │   ├── news/               텔레그램, DART
 │   └── market/             시장지표, 국면 판정
 ├── common/                 공유 모듈
+│   ├── types.py            공통 타입 (Candle, Quote, Position, Side …)
+│   ├── env.py              .env 읽기 (비밀값)
+│   ├── config.py           config/ YAML 읽기
 │   ├── broker/             브로커 어댑터 (키움, 향후 토스)
 │   ├── strategy/           전략 인터페이스 + 구현
 │   ├── db/                 모델, 마이그레이션
@@ -116,6 +119,10 @@ Cloudflare Tunnel + Zero Trust Access를 추가한다. 지금은 구현하지 �
 ```
 
 `common/strategy/`는 실전 엔진과 백테스트가 **동일하게** 사용한다.
+
+공통 타입은 `common/broker/` 가 아니라 `common/` 바로 아래에 둔다.
+브로커 안에 두면 전략과 피드가 `common.broker` 를 import 하게 되어
+의존 방향이 뒤집힌다. (`INTERFACES.md` 0장)
 
 ---
 

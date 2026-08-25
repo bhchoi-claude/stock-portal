@@ -55,12 +55,14 @@
   - [ ] `KRX_API_KEY` — 오픈API 승인 후
 - [ ] KRX 오픈API 사용 신청 — 승인 대기. 승인 전에는 로더를 쓰지 않는다
 - [ ] 기준 데이터 적재 스크립트 — **출처는 KRX 로 확정** (2026-08-26)
+  - [x] `config/` 신설, `common/config.py` YAML 로더
+  - [x] `account` — `python -m common.db.seed` (계좌번호는 넣지 않는다)
+  - [x] `source` — DART 1건. 텔레그램 채널은 목록 확정 후 추가
+  - [ ] **서버에서 seed 실행** — `config/accounts.yaml` 을 만들어야 한다
   - [ ] 응답 실측 후 필드 매핑 확정. 규격을 추정해서 쓰지 않는다
   - [ ] `exchange_holiday` — 당해 연도 휴장일. KRX 매매거래일정
-  - [ ] `stock` — 전 상장종목. KRX 정보데이터시스템
+  - [ ] `stock` — 전 상장종목. KRX 오픈API
   - [ ] `stock_status` — 적재 시점 상태 1행씩
-  - [ ] `account` — 3건 (계좌번호는 넣지 않는다)
-  - [ ] `source` — 텔레그램 채널, DART
 - [x] `common/db/` 모델 계층 — 기준 데이터 6종 + `event_log`
   - [x] `conn.py` 커넥션·트랜잭션, `load_database_url` 을 여기로 통합
   - [x] `models.py` dataclass 6종, `make_stock_id`

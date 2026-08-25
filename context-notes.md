@@ -290,3 +290,50 @@ Markdown 을 쓰면 종목명과 본문의 `_ * [` 를 매번 이스케이프해
 `INTERFACES.md` 9.1 의 규칙(국면 전환 시에만, 엔진 중단 최초 1회 등)은
 발송 주체가 있어야 검증할 수 있다. 지금은 주체가 없다.
 `event_log.notified` 를 쓰는 억제 로직은 Phase 3 국면 알림과 함께 만든다.
+
+## 2026-08-26 (3) — `config/` 신설, 계좌·소스 적재
+
+### 공통 타입은 `common/types.py` 에 둔다 (승인 받음)
+
+`PROJECT.md` 4장 구조에 없던 파일이라 확인을 받고 추가했다.
+
+`Candle`·`Quote`·`Position` 은 `Broker` 와 `Strategy` 가 함께 쓴다.
+`common/broker/` 안에 두면 전략과 `BacktestFeed` 가 `common.broker` 를
+import 하게 되어 의존 방향이 뒤집힌다. 파일은 브로커 작업 때 만든다.
+
+### 적재 스크립트를 `common/db/seed.py` 에 뒀다
+
+`migrate.py` 와 같은 자리다. `python -m common.db.seed` 로 돈다.
+새 디렉토리를 만들 이유가 없었다.
+
+**KRX 로더는 여기 넣지 않는다.** 외부 HTTP 호출은 수집기의 일이고,
+`common/db/` 가 바깥 API 를 알기 시작하면 경계가 무너진다.
+`seed.py` 는 `config/` 에 있는 정적 정의만 다룬다.
+
+### PyYAML 을 추가했다
+
+`config/*.yaml` 이 설계 전제라 불가피했다. 지금까지 psycopg 하나였다.
+
+### YAML 의 `1.0` 은 float 이다
+
+`weight` 를 `Decimal(str(값))` 으로 감싼다. `Decimal(1.1)` 은
+`1.100000000000000088…` 이 된다. 금액은 아니지만 NUMERIC 컬럼이라
+왕복에서 값이 흔들리면 비교가 어긋난다.
+
+### 계좌번호가 새지 않는 것을 구조로 보장한다
+
+`build_accounts` 는 `account` 테이블에 있는 6개 키만 골라 담는다.
+`accounts.yaml` 에 `account_no` 가 섞여 들어와도 모델에 실릴 자리가 없다.
+런타임 검사 대신 테스트로 확인한다 (`test_계좌번호는_모델에_담기지_않는다`).
+
+`allocation`(자금 배분)도 같은 이유로 DB 에 가지 않는다.
+`account` 테이블에 컬럼 자체가 없고, RiskManager 가 config 에서 직접 읽는다.
+
+### 계좌 활성 상태의 초기값
+
+`paper` 만 `is_active: true` 로 뒀다. `daytrade` 는 Phase 10,
+`swing` 실전은 Phase 9 에서 켠다. 지금 켜두면 켜져 있다는 사실을 잊는다.
+
+### 텔레그램 채널은 비워 뒀다
+
+구독 목록을 모른다. 추측해서 채워 넣지 않았다. 형식만 주석으로 남겼다.
