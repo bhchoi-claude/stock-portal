@@ -705,3 +705,47 @@ API 가 빈 응답이나 부분 응답을 주면 **전 종목이 폐지된 것�
 
 토·일은 부르지 않는다. 공휴일은 불러야 알 수 있지만 주말은 확실하다.
 하루가 실패해도 나머지를 계속 받고, 실패한 날은 다시 돌릴 때 자동으로 재시도된다.
+
+## 2026-08-27 (7) — 백필 204만건을 잃은 트랜잭션 버그
+
+일봉 백필이 `2045820건 적재, 실패 0일` 로 끝났는데 **DB 에는 한 건도 없었다.**
+
+### 원인
+
+`price_daily_backfill.main` 만 루프 전에 커서로 직접 SELECT 를 돌렸다.
+
+```python
+with connect() as conn:
+    with conn.cursor() as cur:      # 여기서 암묵적 트랜잭션이 열린다
+        known = known_stock_ids(cur)
+    for day in days:
+        with transaction(conn) as cur:   # 최상위가 아니라 세이브포인트가 된다
+            upsert_price_daily(cur, kept)
+```
+
+psycopg 는 autocommit 이 아니면 첫 `execute()` 에서 트랜잭션을 연다.
+그 상태에서 `conn.transaction()` 은 **세이브포인트**를 만들 뿐이다.
+블록을 빠져나와도 커밋되지 않는다. `connect()` 의 `conn.close()` 가 전부 롤백했다.
+
+실측으로 확인했다. `conn.info.transaction_status` 가 커넥션 직후 `IDLE(0)`,
+커서로 SELECT 한 뒤 `INTRANS(2)`, `transaction()` 을 빠져나온 뒤에도 `INTRANS(2)` 다.
+읽기를 `transaction()` 안에서 하면 매번 `IDLE(0)` 로 돌아온다.
+
+다른 로더들이 멀쩡했던 이유는 `with connect() as conn, transaction(conn) as cur:`
+로 커넥션 직후 바로 들어가서다. `migrate.py` 는 커서로 먼저 읽지만
+`conn.commit()` 을 명시적으로 불러 넘어갔다.
+
+### 배운 것
+
+**"적재 완료" 로그는 커밋의 증거가 아니다.** `executemany` 는 성공했고
+건수도 맞았다. 로더를 만들면 반드시 다른 커넥션으로 다시 읽어 확인한다.
+이번에 잡힌 것도 로그가 아니라 `SELECT COUNT(*)` 덕분이었다.
+
+**하나만 다른 코드를 의심한다.** 같은 일을 하는 네 개의 로더 중 하나만
+구조가 달랐고, 그 하나가 틀렸다.
+
+### `transaction()` 에 가드를 넣었다
+
+이미 트랜잭션이 열려 있으면 `RuntimeError` 를 던진다.
+조용한 데이터 유실은 가장 나쁜 실패 방식이라 진행보다 중단을 택했다.
+기존 호출부는 모두 최상위라 영향이 없다 (`migrate.py` 는 이 헬퍼를 쓰지 않는다).
