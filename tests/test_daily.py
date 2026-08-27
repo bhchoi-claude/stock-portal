@@ -35,34 +35,34 @@ def test_휴장일_판정에_시세_api_를_쓴다(monkeypatch):
     assert seen["api_id"] == "stk_bydd_trd"
 
 
-def test_받을_것이_없으면_마스터를_돌리지_않는다(no_data, monkeypatch):
+def test_받을_것이_없으면_마스터를_건드리지_않는다(no_data, monkeypatch):
     # 종목기본정보는 휴장일에도 응답한다. 돌리면 휴장일 스냅샷이 stock 에 들어간다
     called = []
     monkeypatch.setattr(
-        daily.stock_master, "main", lambda argv: called.append("master") or 0
+        daily.stock_status, "main", lambda argv: called.append("status") or 0
     )
 
     assert daily.load_day(date(2026, 8, 15)) == "nodata"
     assert called == []
 
 
-def test_마스터를_일봉보다_먼저_돌린다(monkeypatch):
+def test_상태_갱신을_일봉보다_먼저_돌린다(monkeypatch):
     order = []
     monkeypatch.setattr(daily, "fetch", lambda path, api_id, bas_dd: [{"ISU_CD": "1"}])
     monkeypatch.setattr(
-        daily.stock_master, "main", lambda argv: order.append("master") or 0
+        daily.stock_status, "main", lambda argv: order.append("status") or 0
     )
     monkeypatch.setattr(
         daily.price_daily, "main", lambda argv: order.append("price") or 0
     )
 
     assert daily.load_day(date(2026, 8, 26)) == "loaded"
-    assert order == ["master", "price"]
+    assert order == ["status", "price"]
 
 
 def test_일봉이_실패하면_failed(monkeypatch):
     monkeypatch.setattr(daily, "fetch", lambda path, api_id, bas_dd: [{"ISU_CD": "1"}])
-    monkeypatch.setattr(daily.stock_master, "main", lambda argv: 0)
+    monkeypatch.setattr(daily.stock_status, "main", lambda argv: 0)
     monkeypatch.setattr(daily.price_daily, "main", lambda argv: 1)
 
     assert daily.load_day(date(2026, 8, 26)) == "failed"
@@ -74,7 +74,7 @@ def test_예외도_실패로_잡는다(monkeypatch):
     def boom(argv):
         raise RuntimeError("네트워크")
 
-    monkeypatch.setattr(daily.stock_master, "main", boom)
+    monkeypatch.setattr(daily.stock_status, "main", boom)
 
     assert daily.load_day(date(2026, 8, 26)) == "failed"
 

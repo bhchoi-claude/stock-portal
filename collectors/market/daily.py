@@ -13,7 +13,7 @@ from common.db.events import log_event
 from common.notify.base import Notifier
 from common.notify.telegram import TelegramNotifier
 
-from . import delisted_refine, price_daily, stock_master
+from . import delisted_refine, price_daily, stock_status
 from .krx import fetch
 from .price_daily_backfill import missing_dates
 
@@ -37,15 +37,17 @@ def is_holiday(bas_dd: str) -> bool:
 def load_day(day: date) -> str:
     """하루를 채운다. 'loaded' | 'nodata' | 'failed'.
 
-    종목 마스터를 먼저 돌려야 그날 신규 상장한 종목의 시세가 FK 를 통과한다.
-    휴장일에는 마스터를 돌리지 않는다. 종목기본정보는 휴장일에도 응답하므로
+    종목 상태 갱신을 먼저 돌려야 그날 신규 상장한 종목의 시세가 FK 를 통과한다.
+    이 단계가 stock 현재값 갱신도 겸한다 (stock_master 를 따로 돌리지 않는다).
+
+    휴장일에는 돌리지 않는다. 종목기본정보는 휴장일에도 응답하므로
     그대로 돌리면 휴장일 스냅샷이 stock 에 들어간다.
     """
     bas_dd = day.strftime("%Y%m%d")
     if is_holiday(bas_dd):
         return "nodata"
 
-    for name, entry in (("종목 마스터", stock_master.main), ("일봉", price_daily.main)):
+    for name, entry in (("종목 상태", stock_status.main), ("일봉", price_daily.main)):
         try:
             code = entry([name, bas_dd])
         except Exception:

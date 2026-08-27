@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 
 import psycopg
 
@@ -172,6 +173,62 @@ def upsert_sources(cur: psycopg.Cursor, sources: Sequence[Source]) -> int:
         [(s.kind, s.identifier, s.name, s.weight, s.is_active) for s in sources],
     )
     return len(sources)
+
+
+def listed_boards(cur: psycopg.Cursor) -> dict[str, str]:
+    """상장중인 종목의 시장 구분. 폐지·이전상장 감지의 '이전 적재' 쪽이다."""
+    cur.execute("SELECT stock_id, board FROM stock WHERE delisted_at IS NULL")
+    return dict(cur.fetchall())
+
+
+def mark_delisted(cur: psycopg.Cursor, stock_ids: Sequence[str], day: date) -> int:
+    """폐지일을 기록한다. 행을 삭제하지 않는다 (생존편향 방지).
+
+    이미 폐지로 표시된 종목은 건드리지 않는다. 감지일은 실제 폐지일보다
+    늦을 수 있어서, 정확한 값은 refine_delisted_at 이 일봉에서 다시 맞춘다.
+    """
+    if not stock_ids:
+        return 0
+    cur.execute(
+        "UPDATE stock SET delisted_at = %s, updated_at = NOW()"
+        " WHERE stock_id = ANY(%s) AND delisted_at IS NULL",
+        (day, list(stock_ids)),
+    )
+    return cur.rowcount
+
+
+def delisted_ids(cur: psycopg.Cursor) -> set[str]:
+    """폐지로 표시된 종목. 이들이 다시 나타나면 감지가 틀렸거나 재상장이다."""
+    cur.execute("SELECT stock_id FROM stock WHERE delisted_at IS NOT NULL")
+    return {row[0] for row in cur.fetchall()}
+
+
+def clear_delisted(cur: psycopg.Cursor, stock_ids: Sequence[str]) -> int:
+    """폐지 표시를 지운다. 폐지됐던 종목이 다시 마스터에 나타났을 때 쓴다.
+
+    upsert_stocks 는 delisted_at 을 COALESCE 로 보존하므로 여기서 따로 지운다.
+    한 번의 잘못된 스냅샷으로 생긴 오탐이 스스로 풀리게 하는 경로다.
+    """
+    if not stock_ids:
+        return 0
+    cur.execute(
+        "UPDATE stock SET delisted_at = NULL, updated_at = NOW()"
+        " WHERE stock_id = ANY(%s)",
+        (list(stock_ids),),
+    )
+    return cur.rowcount
+
+
+def close_stock_status(cur: psycopg.Cursor, stock_ids: Sequence[str], day: date) -> int:
+    """열린 상태 행을 끝낸다. valid_to 는 배타적이라 day 부터는 유효하지 않다."""
+    if not stock_ids:
+        return 0
+    cur.execute(
+        "UPDATE stock_status SET valid_to = %s"
+        " WHERE stock_id = ANY(%s) AND valid_to IS NULL",
+        (day, list(stock_ids)),
+    )
+    return cur.rowcount
 
 
 def refine_delisted_at(cur: psycopg.Cursor) -> int:
