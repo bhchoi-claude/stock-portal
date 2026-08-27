@@ -98,3 +98,49 @@
 - [ ] 종목 상태 변경이 `stock_status` 에 이력으로 남음
 - [ ] 분할 종목의 조정가 시계열이 끊기지 않음
 - [ ] 서버 재부팅 후 수집기가 자동 기동됨
+
+---
+
+## 다음 세션 시작점 (2026-08-28 새벽 중단)
+
+### 바로 확인할 것
+
+3년치 조정 이벤트 스캔을 서버에서 `nohup` 으로 띄워두고 중단했다.
+02:40 전후에 끝났을 것이다. **먼저 결과부터 확인한다.**
+
+```bash
+ssh bh-server@bh-server "tail -3 ~/stock-portal/logs/corporate_action.log"
+```
+
+확인할 것.
+
+- 마지막 줄이 `조정 이벤트 N건 적재` 인가 (아니면 중간에 죽은 것이다)
+- `corporate_action` 건수가 가격제한폭 초과 788건보다 적은가
+  (주식수 불변인 거래정지 해제가 걸러졌으므로 적어야 정상이다)
+- 비율이 `0.02`, `0.1`, `0.5` 처럼 깔끔하게 떨어지는가
+- 3% 같은 어중간한 비율이 섞였으면 자기주식 소각 오탐이다
+
+중간에 죽었으면 그냥 다시 돌린다. upsert 라 중복되지 않는다.
+
+```bash
+ssh bh-server@bh-server "cd ~/stock-portal && nohup .venv/bin/python -m collectors.market.corporate_action > logs/corporate_action.log 2>&1 &"
+```
+
+### 그다음 작업
+
+- [ ] `price_daily.adj_factor` 계산 배치 — `corporate_action` 에서 역순 누적한다.
+      **이 날 이전 가격에 곱할 값은 `ratio` 의 역수를 누적한 것이다**
+      (50:1 감자면 ratio 0.02, 그 이전 가격에 50 을 곱해야 이어진다)
+- [ ] 검증 — 쌍방울(`KRX:102280`) 2024-11-11 앞뒤로 조정가 시계열이 끊기지 않는지
+
+### 막혀 있는 것
+
+`DART_API_KEY` 가 비어 있다. 아래는 키가 생겨야 진행된다.
+
+- 주식수 증가분(무상증자 vs 유상증자) 구분
+- 현금배당 수집
+
+### 건드리지 않은 것
+
+- 서버 `~/stock-portal/ion` — 정체불명 파일(398바이트, 8/25). 내 작업과 무관하다
+- `docs/INTERFACES.md` 코드블록이 `ruff format` 기준에 걸린다. 기존부터 그랬다
