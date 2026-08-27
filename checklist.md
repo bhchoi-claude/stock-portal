@@ -49,7 +49,7 @@
 - [x] PostgreSQL 설치, `portal_db` 생성 (18.6)
 - [x] 서버에 venv 구성 (`.venv/`) — Ubuntu 26.04 는 PEP 668 로 시스템 설치를 막는다
 - [ ] `.env` 나머지 키 채우기 (`DATABASE_URL`, 키움 모의 키는 완료)
-  - [ ] `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` — 알림 테스트에 필요
+  - [x] `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (2026-08-26)
   - [ ] `DART_API_KEY`, `ANTHROPIC_API_KEY`
   - [ ] `KIWOOM_ACCOUNT_*` 3건, `KIWOOM_ALLOWED_IP`
   - [ ] `KRX_API_KEY` — 오픈API 승인 후
@@ -73,7 +73,7 @@
   - [x] `base.py` `Notifier` 인터페이스
   - [x] `telegram.py` `TelegramNotifier` — 평문 발송, `ok` 판정, 토큰 비노출
   - [x] `python -m common.notify` 테스트 발송 CLI
-  - [ ] **서버에서 실제 발송 확인** — 토큰·chat_id 가 있어야 한다
+  - [x] **서버에서 실제 발송 확인** (2026-08-26) — 개인 대화방 수신 성공
   - [ ] 중복 억제 (`event_log.notified`) — 발송 주체가 생기는 Phase 3 에서
 - [x] `common/env.py` — `.env` 읽기를 한 곳으로 모음
 - [ ] Nginx + systemd 기본 설정
@@ -85,7 +85,7 @@
 ## Phase 1 완료 기준
 
 - [ ] 전 상장종목이 `stock` 테이블에 적재됨
-- [ ] 텔레그램으로 테스트 알림 수신
+- [x] 텔레그램으로 테스트 알림 수신 (2026-08-26)
 - [ ] 서버 재부팅 후 서비스 자동 기동 확인
 
 ## Phase 2 로 넘기는 항목
