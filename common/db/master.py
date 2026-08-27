@@ -197,6 +197,12 @@ def mark_delisted(cur: psycopg.Cursor, stock_ids: Sequence[str], day: date) -> i
     return cur.rowcount
 
 
+def latest_status_date(cur: psycopg.Cursor) -> date | None:
+    """상태 이력에 기록된 가장 늦은 날. 과거 날짜로 상태를 되돌리는 것을 막는다."""
+    cur.execute("SELECT MAX(valid_from) FROM stock_status")
+    return cur.fetchone()[0]
+
+
 def delisted_ids(cur: psycopg.Cursor) -> set[str]:
     """폐지로 표시된 종목. 이들이 다시 나타나면 감지가 틀렸거나 재상장이다."""
     cur.execute("SELECT stock_id FROM stock WHERE delisted_at IS NOT NULL")

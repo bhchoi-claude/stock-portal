@@ -59,3 +59,10 @@ def test_폐지_종목은_known_에_없어도_폐지로_다시_세지_않는다(
     changes = detect([stock("005930")], {"KRX:005930": "KOSPI"}, {"KRX:001880"})
 
     assert changes.delisted == []
+
+
+def test_빈_응답이면_전_종목_폐지로_보인다():
+    # detect 자체는 막지 않는다. 호출부가 빈 응답과 급감을 먼저 걸러야 한다
+    changes = detect([], {"KRX:005930": "KOSPI"}, set())
+
+    assert changes.delisted == ["KRX:005930"]
