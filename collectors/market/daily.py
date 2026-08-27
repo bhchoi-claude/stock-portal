@@ -13,7 +13,7 @@ from common.db.events import log_event
 from common.notify.base import Notifier
 from common.notify.telegram import TelegramNotifier
 
-from . import delisted_refine, price_daily, stock_status
+from . import delisted_refine, holidays, price_daily, stock_status
 from .krx import fetch
 from .price_daily_backfill import missing_dates
 
@@ -99,12 +99,17 @@ def main(argv: list[str], notifier: Notifier | None = None) -> int:
         elif result == "failed":
             failed.append(day)
 
+    # 새 거래일이 들어온 뒤라야 폐지일과 휴장일을 다시 셀 수 있다
     if loaded:
-        try:
-            delisted_refine.main(["폐지일 정밀화"])
-        except Exception:
-            logger.exception("폐지일 정밀화 예외")
-            failed.append(today)
+        for name, entry in (
+            ("폐지일 정밀화", delisted_refine.main),
+            ("휴장일 역산", holidays.main),
+        ):
+            try:
+                entry([name])
+            except Exception:
+                logger.exception("%s 예외", name)
+                failed.append(today)
 
     with connect() as conn, transaction(conn) as cur:
         cur.execute("SELECT MAX(trade_date) FROM price_daily")

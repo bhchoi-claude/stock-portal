@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 
 import psycopg
 
@@ -51,4 +52,17 @@ def upsert_price_daily(cur: psycopg.Cursor, prices: Sequence[PriceDaily]) -> int
 def known_stock_ids(cur: psycopg.Cursor) -> set[str]:
     """stock 에 있는 종목 식별자 전체. 시세의 FK 위반을 미리 걸러내는 데 쓴다."""
     cur.execute("SELECT stock_id FROM stock")
+    return {row[0] for row in cur.fetchall()}
+
+
+def traded_range(cur: psycopg.Cursor) -> tuple[date, date] | None:
+    """일봉이 있는 구간. 없으면 None."""
+    cur.execute("SELECT MIN(trade_date), MAX(trade_date) FROM price_daily")
+    first, last = cur.fetchone()
+    return (first, last) if first else None
+
+
+def traded_dates(cur: psycopg.Cursor) -> set[date]:
+    """일봉이 있는 거래일 전체. 휴장일 역산의 기준이다."""
+    cur.execute("SELECT DISTINCT trade_date FROM price_daily")
     return {row[0] for row in cur.fetchall()}

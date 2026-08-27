@@ -35,7 +35,9 @@ def upsert_holidays(cur: psycopg.Cursor, holidays: Sequence[Holiday]) -> int:
         """
         INSERT INTO exchange_holiday (exchange, holiday_date, name)
         VALUES (%s, %s, %s)
-        ON CONFLICT (exchange, holiday_date) DO UPDATE SET name = EXCLUDED.name
+        ON CONFLICT (exchange, holiday_date) DO UPDATE SET
+            -- 역산으로는 이름을 알 수 없다. NULL 로 기존 이름을 지우지 않는다
+            name = COALESCE(EXCLUDED.name, exchange_holiday.name)
         """,
         [(h.exchange, h.holiday_date, h.name) for h in holidays],
     )
