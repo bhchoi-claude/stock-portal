@@ -1,4 +1,4 @@
-# checklist.md — Phase 1 기반 구축
+# checklist.md — Phase 1 기반 구축 (2026-08-27 완료)
 
 > `ROADMAP.md` Phase 1 기준. 완료 기준을 충족한 뒤 Phase 2로 넘어간다.
 
@@ -68,7 +68,8 @@
   - [x] 응답 실측 완료 (2026-08-27) — KOSPI 944 / KOSDAQ 1823 / KONEX 108
   - [x] `collectors/market/krx.py` 클라이언트
   - [x] `collectors/market/stock_master.py` — `stock` + `stock_status` 적재
-  - [ ] **서버에서 적재 실행**
+  - [x] **서버에서 적재 실행** (2026-08-27) — 2849건. KOSPI 918 / KOSDAQ 1823 / KONEX 108
+        KOSPI 는 944건 중 리츠·투자회사 26건을 제외했다
   - [~] `exchange_holiday` — **Phase 2 로 이관.** KRX 에 휴장일 API 가 없다
         일별매매정보의 거래일에서 역산한다
 - [x] `common/db/` 모델 계층 — 기준 데이터 6종 + `event_log`
@@ -92,7 +93,7 @@
 
 ## Phase 1 완료 기준
 
-- [ ] 전 상장종목이 `stock` 테이블에 적재됨
+- [x] 전 상장종목이 `stock` 테이블에 적재됨 (2026-08-27) — 2849건
 - [x] 텔레그램으로 테스트 알림 수신 (2026-08-26)
 - [x] 서버 24시간 운영 설정 완료 (2026-08-26) — 절전·덮개·자동재부팅·배터리 상한
 
