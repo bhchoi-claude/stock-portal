@@ -9,6 +9,7 @@ import pytest
 from common.db.master import STOCK_COLUMNS
 from common.db.models import (
     Account,
+    CorporateAction,
     Exchange,
     Holiday,
     PriceDaily,
@@ -47,6 +48,7 @@ CASES = [
     (Stock, "stock", {"updated_at"}),
     (StockStatus, "stock_status", set()),
     (PriceDaily, "price_daily", set()),
+    (CorporateAction, "corporate_action", {"action_id", "created_at"}),
     (Account, "account", set()),
     (Source, "source", {"source_id", "last_success_at", "created_at"}),
 ]

@@ -73,6 +73,19 @@ class PriceDaily:
 
 
 @dataclass(frozen=True)
+class CorporateAction:
+    stock_id: str
+    effective_date: date
+    action_type: str
+    adjusts_price: bool
+    # 상장주식수 비(이후/이전). 50:1 감자면 0.02, 1:2 액면분할이면 2.0 이다.
+    # 이 날 이전 가격에 곱할 조정계수는 이 값의 역수를 누적한 것이다
+    ratio: Decimal | None = None
+    source: str | None = None
+    detail: dict | None = None
+
+
+@dataclass(frozen=True)
 class Account:
     account_id: str
     broker: str
