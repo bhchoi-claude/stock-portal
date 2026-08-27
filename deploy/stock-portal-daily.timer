@@ -2,8 +2,10 @@
 Description=stock-portal 일 1회 갱신 타이머
 
 [Timer]
-# 국내장 마감(15:30) 뒤 여유를 두고 돈다. 휴장일은 배치가 스스로 판단한다
-OnCalendar=Mon-Fri 16:10 Asia/Seoul
+# KRX 는 당일 일별매매정보를 다음 날 공개한다. 당일 마감 직후에 돌리면
+# 받을 것이 없다. 배치가 빠진 거래일을 되짚어 채우므로 시각에 민감하지 않다.
+# 주말에도 돌린다. 금요일치가 토요일에 올라오는 경우를 받기 위해서다
+OnCalendar=*-*-* 19:00 Asia/Seoul
 # 서버가 꺼져 있어 놓친 날은 부팅 후 따라잡는다
 Persistent=true
 

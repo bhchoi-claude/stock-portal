@@ -93,10 +93,14 @@ def upsert_stocks(cur: psycopg.Cursor, stocks: Sequence[Stock]) -> int:
 
 
 def open_stock_status(cur: psycopg.Cursor, statuses: Sequence[StockStatus]) -> int:
-    """열린 상태 행이 없는 종목에만 새 행을 연다.
+    """열린 상태 행이 없는 상장중인 종목에만 새 행을 연다.
 
     변경 감지와 이력 종료(valid_to 채우기)는 Phase 2 의 상태 갱신 배치가 맡는다.
     여기서는 적재 시점의 최초 1행만 만든다.
+
+    폐지 종목은 제외한다. 열린 행(valid_to IS NULL)이 생기면 폐지된 종목이
+    현재 상태를 가진 것으로 남는다. 과거 날짜로 종목 마스터를 돌리면
+    그때 살아 있던 폐지 종목이 그대로 들어온다.
     """
     if not statuses:
         return 0
@@ -108,6 +112,9 @@ def open_stock_status(cur: psycopg.Cursor, statuses: Sequence[StockStatus]) -> i
         WHERE NOT EXISTS (
             SELECT 1 FROM stock_status WHERE stock_id = %s AND valid_to IS NULL
         )
+        AND EXISTS (
+            SELECT 1 FROM stock WHERE stock_id = %s AND delisted_at IS NULL
+        )
         ON CONFLICT (stock_id, valid_from) DO NOTHING
         """,
         [
@@ -117,6 +124,7 @@ def open_stock_status(cur: psycopg.Cursor, statuses: Sequence[StockStatus]) -> i
                 s.board,
                 s.is_managed,
                 s.is_suspended,
+                s.stock_id,
                 s.stock_id,
             )
             for s in statuses
