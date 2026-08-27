@@ -59,6 +59,20 @@ class StockStatus:
 
 
 @dataclass(frozen=True)
+class PriceDaily:
+    stock_id: str
+    trade_date: date
+    open: Decimal
+    high: Decimal
+    low: Decimal
+    close: Decimal
+    volume: int
+    value: Decimal | None = None
+    # corporate_action 에서 계산하는 파생값이다. 수집기는 채우지 않는다
+    adj_factor: Decimal = Decimal(1)
+
+
+@dataclass(frozen=True)
 class Account:
     account_id: str
     broker: str

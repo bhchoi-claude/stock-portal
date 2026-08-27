@@ -7,7 +7,15 @@ from dataclasses import fields
 import pytest
 
 from common.db.master import STOCK_COLUMNS
-from common.db.models import Account, Exchange, Holiday, Source, Stock, StockStatus
+from common.db.models import (
+    Account,
+    Exchange,
+    Holiday,
+    PriceDaily,
+    Source,
+    Stock,
+    StockStatus,
+)
 
 # 실행 위치와 무관하게 읽는다
 DDL_PATH = (
@@ -38,6 +46,7 @@ CASES = [
     (Holiday, "exchange_holiday", set()),
     (Stock, "stock", {"updated_at"}),
     (StockStatus, "stock_status", set()),
+    (PriceDaily, "price_daily", set()),
     (Account, "account", set()),
     (Source, "source", {"source_id", "last_success_at", "created_at"}),
 ]
