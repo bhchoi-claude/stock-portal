@@ -66,7 +66,9 @@ def main(argv: list[str]) -> int:
     end = date.fromisoformat(argv[2])
 
     with connect() as conn:
-        with conn.cursor() as cur:
+        # 읽기도 transaction() 안에서 한다. 커서로 바로 쿼리하면 암묵적 트랜잭션이
+        # 열린 채 남고, 이후 transaction() 이 세이브포인트가 되어 커밋되지 않는다
+        with transaction(conn) as cur:
             known = known_stock_ids(cur)
             days = missing_dates(cur, start, end)
         logger.info(
