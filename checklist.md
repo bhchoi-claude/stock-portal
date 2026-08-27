@@ -64,10 +64,11 @@
   - [x] **서버에서 seed 실행** (2026-08-26) — 계좌 3건, 소스 1건. 39 passed
   - [x] 엔드포인트 확인 — `data-dbg.krx.co.kr/svc/apis/sto/{apiId}`, 헤더 `AUTH_KEY`
         `stk_isu_base_info` / `ksq_isu_base_info` / `knx_isu_base_info`
-  - [ ] **API 이용신청** — 키와 별개다. 신청 전에는 401. 종목기본정보 3종
-  - [ ] 응답 실측 후 필드 매핑 확정. 규격을 추정해서 쓰지 않는다
-  - [ ] `stock` — 전 상장종목. KRX 오픈API
-  - [ ] `stock_status` — 적재 시점 상태 1행씩
+  - [x] **API 이용신청** (2026-08-27) — 종목기본정보 3종 + 일별매매정보
+  - [x] 응답 실측 완료 (2026-08-27) — KOSPI 944 / KOSDAQ 1823 / KONEX 108
+  - [x] `collectors/market/krx.py` 클라이언트
+  - [x] `collectors/market/stock_master.py` — `stock` + `stock_status` 적재
+  - [ ] **서버에서 적재 실행**
   - [~] `exchange_holiday` — **Phase 2 로 이관.** KRX 에 휴장일 API 가 없다
         일별매매정보의 거래일에서 역산한다
 - [x] `common/db/` 모델 계층 — 기준 데이터 6종 + `event_log`

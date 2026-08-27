@@ -103,7 +103,7 @@ Cloudflare Tunnel + Zero Trust Access를 추가한다. 지금은 구현하지 �
 │   └── swing/
 ├── collectors/
 │   ├── news/               텔레그램, DART
-│   └── market/             시장지표, 국면 판정
+│   └── market/             종목 마스터, 시장지표, 국면 판정
 ├── common/                 공유 모듈
 │   ├── types.py            공통 타입 (Candle, Quote, Position, Side …)
 │   ├── env.py              .env 읽기 (비밀값)
