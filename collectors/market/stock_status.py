@@ -84,19 +84,21 @@ def main(argv: list[str]) -> int:
     bas_dd = argv[1] if len(argv) > 1 else datetime.now(SEOUL).strftime("%Y%m%d")
     day = date.fromisoformat(bas_dd)
 
+    # 과거 날짜로 돌리면 그 뒤에 상장한 종목이 폐지로 잡힌다. 시간을 되돌리지 않는다.
+    # 종목기본정보는 휴장일에도 응답하므로 아무 날짜나 넘어올 수 있다.
+    # API 를 부르기 전에 본다. 어차피 못 쓸 응답을 받아올 이유가 없다
+    with connect() as conn, transaction(conn) as cur:
+        latest = master.latest_status_date(cur)
+    if latest is not None and latest > day:
+        print(f"이미 {latest} 까지 반영돼 있습니다. {day} 로는 되돌릴 수 없습니다.")
+        return 2
+
     incoming = collect(bas_dd)
     if not incoming:
         print(f"{bas_dd} 에 종목 데이터가 없습니다.")
         return 1
 
     with connect() as conn, transaction(conn) as cur:
-        # 과거 날짜로 돌리면 그 뒤에 상장한 종목이 폐지로 잡힌다. 시간을 되돌리지 않는다.
-        # 종목기본정보는 휴장일에도 응답하므로 아무 날짜나 넘어올 수 있다
-        latest = master.latest_status_date(cur)
-        if latest is not None and latest > day:
-            print(f"이미 {latest} 까지 반영돼 있습니다. {day} 로는 되돌릴 수 없습니다.")
-            return 2
-
         known = master.listed_boards(cur)
 
         # 빈 응답이나 부분 응답을 '전 종목 폐지' 로 읽으면 stock 이 통째로 망가진다
