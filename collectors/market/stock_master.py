@@ -13,7 +13,6 @@ from common.db.conn import connect, transaction
 from common.db.events import log_event
 from common.db.models import Stock, StockStatus, make_stock_id
 
-from . import EXIT_HOLIDAY
 from .krx import fetch
 
 logger = logging.getLogger(__name__)
@@ -81,8 +80,8 @@ def main(argv: list[str]) -> int:
 
     stocks = collect(bas_dd)
     if not stocks:
-        print(f"{bas_dd} 에 데이터가 없습니다. 휴장일로 보입니다.")
-        return EXIT_HOLIDAY
+        print(f"{bas_dd} 에 데이터가 없습니다.")
+        return 1
 
     valid_from = date.fromisoformat(bas_dd)
     statuses = [

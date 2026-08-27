@@ -90,3 +90,31 @@ def test_단계_순서(index, name):
     # 신규 상장이 stock 에 있어야 시세가 FK 를 통과하고,
     # 폐지일 정밀화는 그날 일봉이 들어온 뒤라야 맞는 값을 본다
     assert daily.STEPS[index][0] == name
+
+
+def test_시세가_없으면_휴장일이다(monkeypatch):
+    monkeypatch.setattr(daily, "fetch", lambda path, api_id, bas_dd: [])
+
+    assert daily.is_holiday("20260815") is True
+
+
+def test_시세가_있으면_거래일이다(monkeypatch):
+    monkeypatch.setattr(
+        daily, "fetch", lambda path, api_id, bas_dd: [{"ISU_CD": "005930"}]
+    )
+
+    assert daily.is_holiday("20260826") is False
+
+
+def test_휴장일_판정에_시세_api_를_쓴다(monkeypatch):
+    # 종목기본정보는 휴장일에도 응답하므로 판정에 쓸 수 없다
+    seen = {}
+    monkeypatch.setattr(
+        daily,
+        "fetch",
+        lambda path, api_id, bas_dd: seen.update(api_id=api_id) or [],
+    )
+
+    daily.is_holiday("20260815")
+
+    assert seen["api_id"] == "stk_bydd_trd"

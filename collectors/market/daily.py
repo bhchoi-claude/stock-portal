@@ -14,6 +14,7 @@ from common.notify.base import Notifier
 from common.notify.telegram import TelegramNotifier
 
 from . import EXIT_HOLIDAY, delisted_refine, price_daily, stock_master
+from .krx import fetch
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,18 @@ STEPS: tuple[tuple[str, Callable[[list[str]], int]], ...] = (
     ("일봉", price_daily.main),
     ("폐지일 정밀화", delisted_refine.main),
 )
+
+
+def is_holiday(bas_dd: str) -> bool:
+    """거래일이 아닌지 KOSPI 일별매매정보 한 번으로 확인한다.
+
+    종목기본정보로 판정하면 안 된다. 그쪽은 휴장일에도 응답한다
+    (2026-08-15 토요일에 2846건). 거래일 여부를 아는 것은 시세 API 뿐이다.
+
+    단계보다 먼저 봐야 한다. 종목 마스터가 먼저 돌면 휴장일 스냅샷이
+    stock 과 stock_status 에 그대로 들어간다.
+    """
+    return not fetch("sto", price_daily.TRADE_APIS["KOSPI"], bas_dd)
 
 
 def run_steps(bas_dd: str) -> tuple[bool, list[str]]:
@@ -64,7 +77,11 @@ def main(argv: list[str], notifier: Notifier | None = None) -> int:
     # 수집기 CLI 다. 전략이나 피드가 아니므로 현재 시각을 직접 읽어도 된다
     bas_dd = argv[1] if len(argv) > 1 else datetime.now(SEOUL).strftime("%Y%m%d")
 
-    holiday, failed = run_steps(bas_dd)
+    if is_holiday(bas_dd):
+        holiday, failed = True, []
+        logger.info("%s 은 거래일이 아닙니다. 아무것도 갱신하지 않습니다", bas_dd)
+    else:
+        holiday, failed = run_steps(bas_dd)
 
     with connect() as conn, transaction(conn) as cur:
         log_event(
