@@ -7,11 +7,12 @@ import sys
 from datetime import date
 from decimal import Decimal
 
+from common.config import load_config
 from common.db.actions import upsert_corporate_actions
 from common.db.conn import connect, transaction
 from common.db.events import log_event
 from common.db.models import CorporateAction, make_stock_id
-from common.db.prices import traded_dates
+from common.db.prices import price_jumps, traded_dates
 
 from .krx import fetch
 from .price_daily import TRADE_APIS
@@ -36,12 +37,22 @@ def shares_on(bas_dd: str) -> dict[str, int]:
 
 
 def detect_actions(
-    day: date, before: dict[str, int], after: dict[str, int]
+    day: date,
+    before: dict[str, int],
+    after: dict[str, int],
+    jumped: set[str],
 ) -> tuple[list[CorporateAction], list[str]]:
-    """상장주식수가 바뀐 종목을 찾는다. (줄어든 것, 늘어난 종목) 을 돌려준다.
+    """상장주식수가 바뀌고 가격도 점프한 종목을 찾는다.
 
-    가격으로 판정하지 않는다. 거래정지 해제처럼 주식수가 그대로인데 가격만
-    크게 움직이는 날이 있고, 그것은 조정 대상이 아니다.
+    두 신호가 모두 있어야 한다.
+
+    - 주식수 변화만 보면 자기주식 소각·전환사채 전환이 섞인다.
+      주식수는 줄지만 가격은 조정되지 않는다 (2024-11-08 KRX:264450, -3%)
+    - 가격 점프만 보면 거래정지 해제가 섞인다.
+      주식수가 그대로인데 가격만 크게 움직인다 (2024-07-18 KRX:065560)
+
+    `jumped` 는 그날 가격제한폭 밖으로 움직인 종목이다.
+    비율은 가격이 아니라 주식수에서 얻는다. 가격에는 시장 변동이 섞여 있다.
 
     늘어난 경우는 무상증자와 유상증자가 섞여 있어 `adjusts_price` 가 갈린다.
     구분할 근거가 없으므로 적재하지 않고 목록만 돌려준다.
@@ -52,6 +63,8 @@ def detect_actions(
     for stock_id, now in after.items():
         was = before.get(stock_id)
         if was is None or was == 0 or was == now:
+            continue
+        if stock_id not in jumped:
             continue
         if now > was:
             increased.append(stock_id)
@@ -75,8 +88,15 @@ def main(argv: list[str]) -> int:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
 
+    params = load_config("collect")["corporate_action"]
     with connect() as conn, transaction(conn) as cur:
         days = sorted(traded_dates(cur))
+        jumps = price_jumps(
+            cur,
+            Decimal(str(params["price_jump_low"])),
+            Decimal(str(params["price_jump_high"])),
+        )
+    logger.info("가격제한폭 초과 %d건", len(jumps))
     if len(days) < 2:
         print("일봉이 부족해 비교할 수 없습니다.")
         return 1
@@ -93,7 +113,8 @@ def main(argv: list[str]) -> int:
 
     for index, day in enumerate(days[1:], 2):
         after = shares_on(day.strftime("%Y%m%d"))
-        actions, increased = detect_actions(day, before, after)
+        jumped = {sid for sid, d in jumps if d == day}
+        actions, increased = detect_actions(day, before, after, jumped)
         increased_all += [(day, sid) for sid in increased]
 
         if actions:
