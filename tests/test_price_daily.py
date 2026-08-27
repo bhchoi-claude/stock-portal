@@ -4,6 +4,7 @@ from datetime import date
 from decimal import Decimal
 
 from collectors.market.price_daily import collect, drop_unknown, to_price_daily
+from collectors.market.price_daily_backfill import missing_dates
 
 # 2026-08-26 기준 실제 응답에서 그대로 옮긴 행들이다. 값을 임의로 고치지 않는다
 AJ_NETWORKS = {
@@ -156,3 +157,24 @@ def test_stock_에_없는_종목은_건너뛴다():
 
     assert [p.stock_id for p in kept] == ["KRX:095570"]
     assert skipped == ["KRX:060310"]
+
+
+def test_주말과_이미_받은_날은_건너뛴다():
+    class FakeCursor:
+        def execute(self, sql, params):
+            pass
+
+        def fetchall(self):
+            # 8/26(수) 은 이미 받았다
+            return [(date(2026, 8, 26),)]
+
+    days = missing_dates(FakeCursor(), date(2026, 8, 24), date(2026, 8, 31))
+
+    # 8/29(토), 8/30(일) 은 호출하지 않고 8/26 은 이미 있다
+    assert days == [
+        date(2026, 8, 24),
+        date(2026, 8, 25),
+        date(2026, 8, 27),
+        date(2026, 8, 28),
+        date(2026, 8, 31),
+    ]
