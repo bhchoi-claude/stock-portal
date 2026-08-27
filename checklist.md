@@ -53,7 +53,7 @@
   - [ ] `DART_API_KEY`, `ANTHROPIC_API_KEY`
   - [ ] `KIWOOM_ACCOUNT_*` 3건, `KIWOOM_ALLOWED_IP`
   - [ ] `KRX_API_KEY` — 오픈API 승인 후
-- [ ] KRX 오픈API 사용 신청 — 승인 대기. 승인 전에는 로더를 쓰지 않는다
+- [x] KRX 오픈API 사용 신청 — **승인 완료** (2026-08-26)
 - [ ] 기준 데이터 적재 스크립트 — **출처는 KRX 로 확정** (2026-08-26)
   - [x] `config/` 신설, `common/config.py` YAML 로더
   - [x] `account` — `python -m common.db.seed` (계좌번호는 넣지 않는다)
@@ -76,7 +76,7 @@
   - [x] **서버에서 실제 발송 확인** (2026-08-26) — 개인 대화방 수신 성공
   - [ ] 중복 억제 (`event_log.notified`) — 발송 주체가 생기는 Phase 3 에서
 - [x] `common/env.py` — `.env` 읽기를 한 곳으로 모음
-- [ ] Nginx + systemd 기본 설정
+- [~] Nginx + systemd 기본 설정 — **Phase 2 로 이관** (2026-08-26)
 - [x] pytest 셋업 (`pytest.ini`, `conftest.py`, `requirements-dev.txt`)
   - [x] 스키마 드리프트 테스트 — DB 없이 돈다
   - [x] **DB 통합 테스트 서버에서 실행** (2026-08-26, 20 passed) — 로컬은 skip 된다
@@ -86,7 +86,7 @@
 
 - [ ] 전 상장종목이 `stock` 테이블에 적재됨
 - [x] 텔레그램으로 테스트 알림 수신 (2026-08-26)
-- [ ] 서버 재부팅 후 서비스 자동 기동 확인
+- [ ] 서버 24시간 운영 설정 완료 (절전·덮개·자동재부팅·배터리 상한)
 
 ## Phase 2 로 넘기는 항목
 
