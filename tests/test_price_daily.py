@@ -82,6 +82,27 @@ KOSDAQ_ROW = {
 }
 
 
+# 거래량은 있는데 시·고·저만 0. 정리매매·시간외 거래로 보인다.
+# 2024-12-30 지에이이노더스 실제 행이다
+OFF_HOURS_ONLY = {
+    "BAS_DD": "20241230",
+    "ISU_CD": "076340",
+    "ISU_NM": "지에이이노더스",
+    "MKT_NM": "KOSDAQ",
+    "SECT_TP_NM": "",
+    "TDD_CLSPRC": "5590",
+    "CMPPREVDD_PRC": "0",
+    "FLUC_RT": "0.00",
+    "TDD_OPNPRC": "0",
+    "TDD_HGPRC": "0",
+    "TDD_LWPRC": "0",
+    "ACC_TRDVOL": "35536",
+    "ACC_TRDVAL": "177680000",
+    "MKTCAP": "0",
+    "LIST_SHRS": "0",
+}
+
+
 def test_전체_매핑():
     price = to_price_daily(AJ_NETWORKS)
 
@@ -117,7 +138,7 @@ def test_거래량_0_이어도_거래_없음을_복원할_수_있다():
 
 
 def test_ohlc_불변식이_지켜진다():
-    for row in (AJ_NETWORKS, DH_AUTONEXT, CJ_PREF, KOSDAQ_ROW):
+    for row in (AJ_NETWORKS, DH_AUTONEXT, CJ_PREF, KOSDAQ_ROW, OFF_HOURS_ONLY):
         p = to_price_daily(row)
 
         assert p.low <= p.open <= p.high
@@ -178,3 +199,15 @@ def test_주말과_이미_받은_날은_건너뛴다():
         date(2026, 8, 28),
         date(2026, 8, 31),
     ]
+
+
+def test_거래량이_있어도_시고저가_0_이면_종가로_채운다():
+    # 3년치에서 4건 나왔다. 거래량으로 판정하면 놓친다
+    price = to_price_daily(OFF_HOURS_ONLY)
+
+    assert price.volume == 35536
+    assert price.open == price.high == price.low == price.close == Decimal(5590)
+
+
+def test_시고저를_채워도_거래량은_그대로_둔다():
+    assert to_price_daily(OFF_HOURS_ONLY).volume == 35536

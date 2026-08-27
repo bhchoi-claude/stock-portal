@@ -35,16 +35,18 @@ def to_price_daily(row: dict[str, Any]) -> PriceDaily:
     """
     close = Decimal(row["TDD_CLSPRC"])
     volume = int(row["ACC_TRDVOL"])
+    open_ = Decimal(row["TDD_OPNPRC"])
+    high = Decimal(row["TDD_HGPRC"])
+    low = Decimal(row["TDD_LWPRC"])
 
-    # 거래가 없으면 시·고·저가 0 으로 온다. 종가로 채워 도지 캔들로 만든다.
+    # 정규장 체결이 없으면 시·고·저가 0 으로 온다. 종가로 채워 도지로 만든다.
     # 0 을 그대로 넣으면 low <= open, close <= high 가 깨지고 지표가 망가진다.
-    # volume 이 0 으로 남으므로 '거래 없는 날' 이라는 사실은 그대로 복원할 수 있다
-    if volume == 0:
+    #
+    # 거래량으로 판정하지 않는다. 대부분은 거래량 0 과 같이 오지만, 정리매매·
+    # 시간외 거래로 거래량이 있는데 시·고·저만 0 인 행이 3년에 4건 있었다.
+    # 거래량은 그대로 두므로 '정규장 체결이 없던 날' 이라는 사실은 복원할 수 있다
+    if not open_ or not high or not low:
         open_ = high = low = close
-    else:
-        open_ = Decimal(row["TDD_OPNPRC"])
-        high = Decimal(row["TDD_HGPRC"])
-        low = Decimal(row["TDD_LWPRC"])
 
     return PriceDaily(
         stock_id=make_stock_id("KRX", row["ISU_CD"]),
