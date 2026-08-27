@@ -139,3 +139,30 @@ def test_event_log_기록(cur):
     )
     cur.execute("SELECT detail FROM event_log WHERE event_id = %s", (event_id,))
     assert cur.fetchone()[0] == {"k": 1}
+
+
+def test_폐지일을_마지막_거래일_다음날로_맞춘다(cur):
+    stock = sample_stock(delisted_at=date(2024, 1, 1))
+    master.upsert_stocks(cur, [stock])
+    cur.executemany(
+        "INSERT INTO price_daily (stock_id, trade_date, open, high, low, close, volume)"
+        " VALUES (%s, %s, 100, 100, 100, 100, 1)",
+        [(TEST_STOCK_ID, date(2023, 12, 20)), (TEST_STOCK_ID, date(2023, 12, 21))],
+    )
+
+    master.refine_delisted_at(cur)
+
+    assert master.get_stock(cur, TEST_STOCK_ID).delisted_at == date(2023, 12, 22)
+
+
+def test_상장중인_종목은_폐지일을_매기지_않는다(cur):
+    master.upsert_stocks(cur, [sample_stock(delisted_at=None)])
+    cur.execute(
+        "INSERT INTO price_daily (stock_id, trade_date, open, high, low, close, volume)"
+        " VALUES (%s, %s, 100, 100, 100, 100, 1)",
+        (TEST_STOCK_ID, date(2023, 12, 20)),
+    )
+
+    master.refine_delisted_at(cur)
+
+    assert master.get_stock(cur, TEST_STOCK_ID).delisted_at is None

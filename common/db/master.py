@@ -166,6 +166,48 @@ def upsert_sources(cur: psycopg.Cursor, sources: Sequence[Source]) -> int:
     return len(sources)
 
 
+def refine_delisted_at(cur: psycopg.Cursor) -> int:
+    """폐지일을 일봉의 마지막 거래일 다음 날로 맞춘다. 갱신된 행 수를 돌려준다.
+
+    이미 폐지로 표시된 종목만 손댄다. 새로 폐지를 표시하지 않는다.
+    상장중인 종목은 마지막 거래일이 그냥 마지막으로 적재한 날이라 의미가 없다.
+    """
+    cur.execute(
+        """
+        UPDATE stock s
+        SET delisted_at = p.last_trade + 1, updated_at = NOW()
+        FROM (
+            SELECT stock_id, MAX(trade_date) AS last_trade
+            FROM price_daily GROUP BY stock_id
+        ) p
+        WHERE s.stock_id = p.stock_id
+          AND s.delisted_at IS NOT NULL
+          AND s.delisted_at <> p.last_trade + 1
+          -- 마지막 날까지 거래된 종목은 건드리지 않는다. 폐지가 아니라
+          -- 마스터에서만 빠진 것일 수 있고, 그 경우 폐지일이 틀린 값이 된다
+          AND p.last_trade < (SELECT MAX(trade_date) FROM price_daily)
+        """
+    )
+    return cur.rowcount
+
+
+def still_trading(cur: psycopg.Cursor) -> list[str]:
+    """폐지로 표시됐는데 마지막 거래일이 적재 마지막 날인 종목.
+
+    폐지가 아니라 종목 마스터에서만 사라진 것일 수 있다. 폐지일을 매기면
+    틀린 값이 들어가므로 호출부가 확인할 수 있게 목록으로 돌려준다.
+    """
+    cur.execute(
+        """
+        SELECT s.stock_id FROM stock s JOIN price_daily p USING (stock_id)
+        WHERE s.delisted_at IS NOT NULL
+        GROUP BY s.stock_id
+        HAVING MAX(p.trade_date) = (SELECT MAX(trade_date) FROM price_daily)
+        """
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
 def get_stock(cur: psycopg.Cursor, stock_id: str) -> Stock | None:
     """종목 한 건을 읽는다. 없으면 None."""
     cur.execute(
