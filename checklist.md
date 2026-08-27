@@ -41,11 +41,14 @@
 
 ## 남은 Phase 1 작업
 
-- [ ] bh-server 24시간 운영 설정
-  - 덮개 닫힘 무시, 절전 비활성
-  - **배터리 충전 임계값 60~80% 제한**
-  - 커널 자동 재부팅 비활성
-  - 공유기 DHCP 예약, BIOS 전원복구 자동부팅
+- [x] bh-server 24시간 운영 설정 (2026-08-26)
+  - [x] 덮개 닫힘 무시 — `/etc/systemd/logind.conf.d/99-lid.conf`
+  - [x] 절전 비활성 — sleep/suspend/hibernate/hybrid-sleep 마스킹
+  - [x] **배터리 충전 상한 80%** — `lg-battery-care.service`
+        LG 드라이버는 80 과 100 만 받는다. 60 은 거부된다
+  - [x] 커널 자동 재부팅 비활성 — `/etc/apt/apt.conf.d/99-no-auto-reboot`
+  - [ ] 공유기 DHCP 예약 — Tailscale 로 접속하므로 우선순위 낮음
+  - [ ] BIOS 전원복구 자동부팅 — 정전 대비. 셸 밖 작업
 - [x] PostgreSQL 설치, `portal_db` 생성 (18.6)
 - [x] 서버에 venv 구성 (`.venv/`) — Ubuntu 26.04 는 PEP 668 로 시스템 설치를 막는다
 - [ ] `.env` 나머지 키 채우기 (`DATABASE_URL`, 키움 모의 키는 완료)
@@ -86,7 +89,7 @@
 
 - [ ] 전 상장종목이 `stock` 테이블에 적재됨
 - [x] 텔레그램으로 테스트 알림 수신 (2026-08-26)
-- [ ] 서버 24시간 운영 설정 완료 (절전·덮개·자동재부팅·배터리 상한)
+- [x] 서버 24시간 운영 설정 완료 (2026-08-26) — 절전·덮개·자동재부팅·배터리 상한
 
 ## Phase 2 로 넘기는 항목
 
