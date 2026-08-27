@@ -14,6 +14,7 @@ from common.db.events import log_event
 from common.db.models import PriceDaily, make_stock_id
 from common.db.prices import known_stock_ids, upsert_price_daily
 
+from . import EXIT_HOLIDAY
 from .krx import fetch
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ def main(argv: list[str]) -> int:
     prices = collect(bas_dd)
     if not prices:
         print(f"{bas_dd} 에 데이터가 없습니다. 휴장일로 보입니다.")
-        return 1
+        return EXIT_HOLIDAY
 
     with connect() as conn, transaction(conn) as cur:
         kept, skipped = drop_unknown(prices, known_stock_ids(cur))

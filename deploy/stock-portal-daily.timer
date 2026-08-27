@@ -1,0 +1,11 @@
+[Unit]
+Description=stock-portal 일 1회 갱신 타이머
+
+[Timer]
+# 국내장 마감(15:30) 뒤 여유를 두고 돈다. 휴장일은 배치가 스스로 판단한다
+OnCalendar=Mon-Fri 16:10 Asia/Seoul
+# 서버가 꺼져 있어 놓친 날은 부팅 후 따라잡는다
+Persistent=true
+
+[Install]
+WantedBy=timers.target
