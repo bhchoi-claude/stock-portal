@@ -33,6 +33,21 @@ def cur():
         conn.close()
 
 
+def make_test_indicator(cur, code: str = "TEST_IND") -> str:
+    """테스트 전용 지표를 만든다. 롤백되므로 흔적이 남지 않는다.
+
+    VKOSPI 같은 실제 코드를 쓰면 운영 데이터와 섞여 단정이 깨진다.
+    2026-08-28 에 실제 지표가 들어온 뒤 실제로 깨졌다.
+    """
+    cur.execute(
+        "INSERT INTO indicator (indicator_code, name, layer, frequency, source)"
+        " VALUES (%s, %s, 'risk', 'daily', 'test')"
+        " ON CONFLICT (indicator_code) DO NOTHING",
+        (code, "테스트 지표"),
+    )
+    return code
+
+
 def sample_stock(**overrides) -> Stock:
     base = {
         "stock_id": TEST_STOCK_ID,
@@ -274,17 +289,19 @@ def test_지표값을_넣고_변화율을_계산한다(cur):
     from collectors.base import IndicatorRecord
     from common.db.indicators import recompute_change_rate, upsert_indicator_values
 
+    code = make_test_indicator(cur)
     rows = [
-        IndicatorRecord("VKOSPI", date(2026, 8, 26), Decimal(10)),
-        IndicatorRecord("VKOSPI", date(2026, 8, 27), Decimal(12)),
-        IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal(9)),
+        IndicatorRecord(code, date(2026, 8, 26), Decimal(10)),
+        IndicatorRecord(code, date(2026, 8, 27), Decimal(12)),
+        IndicatorRecord(code, date(2026, 8, 28), Decimal(9)),
     ]
     upsert_indicator_values(cur, rows)
-    recompute_change_rate(cur, "VKOSPI")
+    recompute_change_rate(cur, code)
 
     cur.execute(
         "SELECT period_date, value, change_rate FROM indicator_value"
-        " WHERE indicator_code = 'VKOSPI' ORDER BY period_date"
+        " WHERE indicator_code = %s ORDER BY period_date",
+        (code,),
     )
     got = cur.fetchall()
 
@@ -300,17 +317,16 @@ def test_지표값을_다시_넣으면_덮어쓴다(cur):
     from collectors.base import IndicatorRecord
     from common.db.indicators import upsert_indicator_values
 
+    code = make_test_indicator(cur)
+    upsert_indicator_values(cur, [IndicatorRecord(code, date(2026, 8, 28), Decimal(9))])
     upsert_indicator_values(
-        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal(9))]
-    )
-    upsert_indicator_values(
-        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal(11))]
+        cur, [IndicatorRecord(code, date(2026, 8, 28), Decimal(11))]
     )
 
     cur.execute(
         "SELECT COUNT(*), MAX(value) FROM indicator_value"
-        " WHERE indicator_code = 'VKOSPI' AND period_date = %s",
-        (date(2026, 8, 28),),
+        " WHERE indicator_code = %s AND period_date = %s",
+        (code, date(2026, 8, 28)),
     )
     assert cur.fetchone() == (1, Decimal("11.000000"))
 
@@ -402,23 +418,23 @@ def test_기준일_이전의_최신_지표값을_찾는다(cur):
     from common.db.indicators import recompute_change_rate, upsert_indicator_values
     from common.db.regime import value_as_of
 
+    code = make_test_indicator(cur)
     upsert_indicator_values(
         cur,
         [
-            IndicatorRecord("VKOSPI", date(2026, 8, 20), Decimal(10)),
-            IndicatorRecord("VKOSPI", date(2026, 8, 25), Decimal(12)),
-            IndicatorRecord("VKOSPI", date(2026, 8, 30), Decimal(99)),
+            IndicatorRecord(code, date(2026, 8, 20), Decimal(10)),
+            IndicatorRecord(code, date(2026, 8, 25), Decimal(12)),
+            IndicatorRecord(code, date(2026, 8, 30), Decimal(99)),
         ],
     )
-    recompute_change_rate(cur, "VKOSPI")
+    recompute_change_rate(cur, code)
 
-    assert value_as_of(cur, "VKOSPI", "value", date(2026, 8, 28)) == (
+    assert value_as_of(cur, code, "value", date(2026, 8, 28)) == (
         date(2026, 8, 25),
         Decimal("12.000000"),
     )
     # 첫 행은 change_rate 가 NULL 이라 건너뛴다
-    found = value_as_of(cur, "VKOSPI", "change_rate", date(2026, 8, 21))
-    assert found is None
+    assert value_as_of(cur, code, "change_rate", date(2026, 8, 21)) is None
 
 
 def test_모르는_metric_은_거부한다(cur):
@@ -427,4 +443,4 @@ def test_모르는_metric_은_거부한다(cur):
     from common.db.regime import value_as_of
 
     with pytest.raises(ValueError):
-        value_as_of(cur, "VKOSPI", "value; DROP TABLE stock", date(2026, 8, 28))
+        value_as_of(cur, "TEST_IND", "value; DROP TABLE stock", date(2026, 8, 28))
