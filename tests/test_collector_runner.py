@@ -126,6 +126,15 @@ def test_이름에_소스와_클래스가_들어간다():
     assert process_name(FakeCollector()) == "krx.FakeCollector"
 
 
+def test_지표_코드가_있으면_이름에_쓴다():
+    # 같은 클래스를 여러 지표에 쓰면 클래스명만으로는 구분이 안 된다.
+    # 실패 집계가 섞여 한쪽 장애가 다른 쪽 알림을 당긴다
+    collector = FakeCollector()
+    collector.indicator_code = "DEPOSIT"
+
+    assert process_name(collector) == "krx.DEPOSIT"
+
+
 def test_관찰_창은_수집기_주기에_맞춘다():
     # 하루 한 번 도는 수집기는 1시간 창에서 최대 1회만 실패한다.
     # 임계값 2 에 닿지 못해 죽은 소스가 영원히 조용해진다

@@ -31,8 +31,14 @@ class RunOutcome:
 
 
 def process_name(collector: Collector) -> str:
-    """event_log 에 남길 이름. 소스와 클래스를 함께 적는다."""
-    return f"{collector.source_kind}.{type(collector).__name__}"
+    """event_log 에 남길 이름. 수집기마다 달라야 한다.
+
+    같은 클래스를 여러 지표에 쓰면 클래스명만으로는 구분이 안 되고,
+    실패 집계가 섞여 한쪽 장애가 다른 쪽 알림을 당긴다.
+    지표 코드가 있으면 그것을 쓴다.
+    """
+    label = getattr(collector, "indicator_code", None) or type(collector).__name__
+    return f"{collector.source_kind}.{label}"
 
 
 def failure_window_hours(interval_sec: int, threshold: int, minimum: int) -> int:

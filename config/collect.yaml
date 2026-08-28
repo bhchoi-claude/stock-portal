@@ -82,3 +82,17 @@ indicators:
 
   # 실전 앱키가 없다. 지수 조회는 계좌와 무관하므로 모의로 받는다
   use_paper: true
+
+  # 금융투자협회·관세청·ECOS 지표
+  kofia_rows: 400
+  ecos_days: 400
+
+  # 관세청은 월 단위다. 이 개월수만큼 거슬러 받는다
+  customs_months: 36
+
+  # HS 8542 는 집적회로다. 응답이 10자리 세부코드로 쪼개져 와서 합산한다
+  semiconductor_hs: "8542"
+
+  # ECOS 원달러 환율
+  ecos_fx_stat: "731Y001"
+  ecos_fx_item: "0000001"

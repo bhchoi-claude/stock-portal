@@ -18,6 +18,11 @@ from common.types import IndexClose
 
 from ..base import Collector, CollectResult, IndicatorRecord
 from .indicator_runner import run
+from .public_indicators import (
+    CustomsExportCollector,
+    EcosCollector,
+    KofiaCollector,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +53,7 @@ def ma_gap_records(
 class VkospiCollector(Collector):
     """변동성지수를 그대로 지표로 쓴다."""
 
+    indicator_code = "VKOSPI"
     source_kind = "kiwoom"
     source_identifier = "ka20006"
     interval_sec = 86400
@@ -73,6 +79,7 @@ class VkospiCollector(Collector):
 class KospiMaGapCollector(Collector):
     """KOSPI 이동평균 이격도. 수집이 아니라 파생 계산이다."""
 
+    indicator_code = "KOSPI_MA200_GAP"
     source_kind = "kiwoom"
     source_identifier = "ka20006"
     interval_sec = 86400
@@ -104,6 +111,7 @@ class ForeignNetCollector(Collector):
     수집이 아니라 이미 받은 것을 집계하는 파생 지표다.
     """
 
+    indicator_code = "FOREIGN_NET"
     source_kind = "kiwoom"
     source_identifier = "ka10059"
     interval_sec = 86400
@@ -164,6 +172,15 @@ def fill_market_returns(kospi: list[IndexClose], kosdaq: list[IndexClose]) -> in
     return len(filled)
 
 
+def customs_range(end: date, params: dict) -> tuple[str, str]:
+    """관세청 조회 구간(YYYYMM). 월 단위라 개월수로 거슬러 올라간다."""
+    months = params["customs_months"]
+    year, month = end.year, end.month - months
+    while month <= 0:
+        year, month = year - 1, month + 12
+    return f"{year}{month:02d}", f"{end.year}{end.month:02d}"
+
+
 def main(argv: list[str]) -> int:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
@@ -181,6 +198,31 @@ def main(argv: list[str]) -> int:
         VkospiCollector(broker, params["vkospi_code"], end),
         KospiMaGapCollector(broker, params["kospi_code"], end, params["ma_window"]),
         ForeignNetCollector(params["min_flow_coverage_ratio"]),
+        KofiaCollector(
+            "DEPOSIT",
+            "getSecuritiesMarketTotalCapitalInfo",
+            "invrDpsgAmt",
+            params["kofia_rows"],
+        ),
+        KofiaCollector(
+            "CREDIT_BALANCE",
+            "getGrantingOfCreditBalanceInfo",
+            "crdTrFingWhl",
+            params["kofia_rows"],
+        ),
+        EcosCollector(
+            "USDKRW",
+            params["ecos_fx_stat"],
+            params["ecos_fx_item"],
+            end,
+            params["ecos_days"],
+        ),
+        CustomsExportCollector("EXPORT_YOY", *customs_range(end, params)),
+        CustomsExportCollector(
+            "EXPORT_SEMI_YOY",
+            *customs_range(end, params),
+            hs_code=params["semiconductor_hs"],
+        ),
     ]
 
     try:
