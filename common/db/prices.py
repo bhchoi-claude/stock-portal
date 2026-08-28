@@ -210,10 +210,14 @@ def create_minute_partition(cur: psycopg.Cursor, month: datetime) -> str:
     """
     nxt = (month + timedelta(days=32)).replace(day=1)
     name = f"price_minute_{month:%Y%m}"
+    # DDL 에는 파라미터를 쓸 수 없다. 경계를 리터럴로 박아 넣는다
     cur.execute(
         psycopg.sql.SQL(
-            "CREATE TABLE {} PARTITION OF price_minute FOR VALUES FROM (%s) TO (%s)"
-        ).format(psycopg.sql.Identifier(name)),
-        (month, nxt),
+            "CREATE TABLE {} PARTITION OF price_minute FOR VALUES FROM ({}) TO ({})"
+        ).format(
+            psycopg.sql.Identifier(name),
+            psycopg.sql.Literal(month),
+            psycopg.sql.Literal(nxt),
+        )
     )
     return name
