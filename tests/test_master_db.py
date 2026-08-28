@@ -330,3 +330,101 @@ def test_등록되지_않은_소스는_건드리지_않는다(cur):
     from common.db.indicators import touch_source
 
     assert touch_source(cur, "krx", "없는소스") == 0
+
+
+def test_국면_판정을_기록하고_직전_국면을_읽는다(cur):
+    from decimal import Decimal
+
+    from common.db.regime import previous_regime, upsert_market_regime
+
+    upsert_market_regime(
+        cur, date(2026, 8, 27), "neutral", Decimal("0.1"), {}, {}, "v1"
+    )
+    upsert_market_regime(
+        cur, date(2026, 8, 28), "danger", Decimal("-0.5"), {}, {}, "v1"
+    )
+
+    assert previous_regime(cur, date(2026, 8, 28)) == "neutral"
+    assert previous_regime(cur, date(2026, 8, 27)) is None
+
+
+def test_수동_override_는_덮어쓰지_않는다(cur):
+    from decimal import Decimal
+
+    from common.db.regime import is_override, upsert_market_regime
+
+    day = date(2026, 8, 28)
+    upsert_market_regime(cur, day, "neutral", Decimal("0.1"), {}, {}, "v1")
+    cur.execute(
+        "UPDATE market_regime SET is_override = TRUE, override_reason = '수동'"
+        " WHERE trade_date = %s",
+        (day,),
+    )
+
+    changed = upsert_market_regime(cur, day, "safe", Decimal("0.9"), {}, {}, "v1")
+
+    assert changed == 0
+    assert is_override(cur, day) is True
+    cur.execute("SELECT regime FROM market_regime WHERE trade_date = %s", (day,))
+    assert cur.fetchone()[0] == "neutral"
+
+
+def test_스냅샷의_decimal_이_문자열로_남는다(cur):
+    from decimal import Decimal
+
+    from common.db.regime import upsert_market_regime
+
+    day = date(2026, 8, 28)
+    upsert_market_regime(
+        cur,
+        day,
+        "danger",
+        Decimal("-0.5"),
+        {"risk": Decimal(-1)},
+        {"VKOSPI": Decimal("30.5")},
+        "v1",
+    )
+
+    cur.execute(
+        "SELECT layer_scores, indicators FROM market_regime WHERE trade_date = %s",
+        (day,),
+    )
+    layers, indicators = cur.fetchone()
+    # float 로 바꾸면 값이 미세하게 달라진다. 스냅샷은 보이는 그대로 남긴다
+    assert layers == {"risk": "-1"}
+    assert indicators == {"VKOSPI": "30.5"}
+
+
+def test_기준일_이전의_최신_지표값을_찾는다(cur):
+    from decimal import Decimal
+
+    from collectors.base import IndicatorRecord
+    from common.db.indicators import recompute_change_rate, upsert_indicator_values
+    from common.db.regime import value_as_of
+
+    upsert_indicator_values(
+        cur,
+        [
+            IndicatorRecord("VKOSPI", date(2026, 8, 20), Decimal(10)),
+            IndicatorRecord("VKOSPI", date(2026, 8, 25), Decimal(12)),
+            IndicatorRecord("VKOSPI", date(2026, 8, 30), Decimal(99)),
+        ],
+    )
+    recompute_change_rate(cur, "VKOSPI")
+
+    assert value_as_of(cur, "VKOSPI", "value", date(2026, 8, 28)) == (
+        date(2026, 8, 25),
+        Decimal("12.000000"),
+    )
+    # 첫 행은 change_rate 가 NULL 이라 건너뛴다
+    found = value_as_of(cur, "VKOSPI", "change_rate", date(2026, 8, 21))
+    assert found is None
+
+
+def test_모르는_metric_은_거부한다(cur):
+    import pytest
+
+    from common.db.regime import value_as_of
+
+    with pytest.raises(ValueError):
+        value_as_of(cur, "VKOSPI", "value; DROP TABLE stock", date(2026, 8, 28))
