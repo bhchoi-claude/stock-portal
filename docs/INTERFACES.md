@@ -316,6 +316,72 @@ api-id: ka10080
 
 ---
 
+## 2.5 지표 소스 실측 규격 (2026-08-29)
+
+인증키를 받아 실제로 호출해 확인한 값이다.
+
+### data.go.kr — 서비스키는 Encoding 형태로 온다
+
+포털이 주는 '일반 인증키' 는 `%` 가 섞인 **Encoding 형태**다.
+그대로 `urlencode` 하면 `%` 가 `%25` 로 이중 인코딩돼
+`SERVICE_KEY_IS_NOT_REGISTERED_ERROR` (HTTP 403) 가 난다.
+
+**`unquote` 로 한 번 푼 뒤 인코딩한다.** 그러면 Encoding·Decoding 어느 값을
+넣어도 동작한다. 사용자가 어느 쪽을 넣을지 코드가 정할 수 없다.
+
+| 지표 | Base URL | 오퍼레이션 |
+|---|---|---|
+| `DEPOSIT` | `apis.data.go.kr/1160100/service/GetKofiaStatisticsInfoService` | `getSecuritiesMarketTotalCapitalInfo` |
+| `CREDIT_BALANCE` | 위와 같음 | `getGrantingOfCreditBalanceInfo` |
+| `EXPORT_YOY` | `apis.data.go.kr/1220000/Newtrade` | `getNewtradeList` |
+| `EXPORT_SEMI_YOY` | `apis.data.go.kr/1220000/Itemtrade` | `getItemtradeList` |
+
+**금융투자협회 두 건은 `resultType=json` 이 먹지만 관세청 두 건은 XML 만 온다.**
+
+**증시자금추이** — 일별, 총 1185건
+
+| 필드 | 내용 |
+|---|---|
+| `basDt` | 기준일자 `YYYYMMDD` |
+| `invrDpsgAmt` | **투자자예탁금** (원). 2026-08-26 에 98.9조 |
+| `brkTrdUcolMny` | 위탁매매미수금 |
+
+**신용공여잔고추이** — 일별, 총 1172건
+
+| 필드 | 내용 |
+|---|---|
+| `basDt` | 기준일자 |
+| `crdTrFingWhl` | **신용거래융자 전체** (원). 2026-08-26 에 33.1조 |
+| `crdTrFingScrs` / `crdTrFingKosdaq` | 시장별 내역 |
+| `dpsgScrtMogFing` | 예탁증권담보융자 |
+
+**수출입총괄** — 월별. `strtYymm` / `endYymm` 는 `YYYYMM`
+
+| 필드 | 내용 |
+|---|---|
+| `year` | `2026.06` 형식. **마지막 행은 `총계` 다. 걸러야 한다** |
+| `expDlr` | 수출액 (미국달러) |
+| `impDlr` | 수입액 |
+
+**품목별 수출입실적** — 월별, `hsSgn` 으로 HS 코드 지정.
+`hsSgn=8542` 는 집적회로이고 응답은 10자리 세부코드로 쪼개져 온다
+(`8542311000` 모노리식, `8542321010` 디램 등). **합산이 필요하다.**
+
+`year` 에 `총계` 행이 섞이는 것은 총괄과 같다.
+
+### ECOS — 인증키 하나로 모든 통계표를 조회한다
+
+`StatisticSearch/{KEY}/json/kr/{시작}/{끝}/{통계표}/{주기}/{시작일}/{종료일}/{항목}`
+
+| 지표 | 통계표 | 주기 | 항목 |
+|---|---|---|---|
+| `USDKRW` | `731Y001` 주요국 통화의 대원화환율 | `D` | `0000001` 원/미국달러(매매기준율) |
+
+응답은 `StatisticSearch.row[]` 이고 `TIME` (`YYYYMMDD`), `DATA_VALUE` (문자열) 를 쓴다.
+1964-05-04 부터 있다.
+
+---
+
 ## 3. DataFeed — 데이터 공급
 
 **백테스트와 실전이 갈라지지 않게 하는 핵심 지점.**
