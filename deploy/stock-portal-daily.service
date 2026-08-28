@@ -9,5 +9,8 @@ User=bh-server
 WorkingDirectory=/home/bh-server/stock-portal
 # 시스템 파이썬으로 실행하면 psycopg 를 찾지 못한다
 ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.daily
+
+# 국면 판정은 지표가 갱신된 뒤에 돈다. 지표가 없으면 스스로 보류한다
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.regime
 StandardOutput=append:/home/bh-server/stock-portal/logs/daily.log
 StandardError=append:/home/bh-server/stock-portal/logs/daily.log

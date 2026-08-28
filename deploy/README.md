@@ -31,6 +31,10 @@ tail -f logs/daily.log
 미적재 거래일이 `config/collect.yaml` 의 `max_delay_days` 를 넘게 쌓이면
 텔레그램으로 알린다. 조용히 아무것도 하지 않는 상태를 막기 위한 것이다.
 
+같은 유닛에서 국면 판정(`collectors.market.regime`)이 이어 돈다.
+쓸 수 있는 지표가 없으면 스스로 보류하므로 지표 수집기가 붙기 전에도 안전하다.
+국면이 바뀔 때만 텔레그램으로 알린다.
+
 ## 키움 수집 (분봉·수급)
 
 ```bash
