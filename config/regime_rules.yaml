@@ -37,8 +37,8 @@ layers:
       - code: FOREIGN_NET
         weight: 0.35
         max_age_days: 5
-        # 단위는 원. 순매수면 안전, 순매도면 위험
-        thresholds: { danger: -300000000000, safe: 300000000000 }
+        # 단위는 억원 (indicator 표 정의). 순매수면 안전, 순매도면 위험
+        thresholds: { danger: -3000, safe: 3000 }
 
   risk:
     weight: 0.30

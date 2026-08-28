@@ -1,5 +1,6 @@
 # 공공 API 응답 파싱을 실제 응답 샘플로 고정해 확인한다
 
+import itertools
 from datetime import UTC, date, datetime
 from decimal import Decimal
 
@@ -88,7 +89,7 @@ def test_투자자예탁금_매핑(monkeypatch):
         date(2026, 8, 26),
         date(2026, 8, 25),
     ]
-    assert result.records[0].value == Decimal(98917653413503)
+    assert result.records[0].value == Decimal(98917653413503) / Decimal(10**8)
 
 
 def test_신용거래융자_매핑(monkeypatch):
@@ -98,7 +99,7 @@ def test_신용거래융자_매핑(monkeypatch):
         "CREDIT_BALANCE", "getGrantingOfCreditBalanceInfo", "crdTrFingWhl", 400
     ).collect(SINCE)
 
-    assert result.records[0].value == Decimal(33102366526442)
+    assert result.records[0].value == Decimal(33102366526442) / Decimal(10**8)
     assert result.records[0].indicator_code == "CREDIT_BALANCE"
 
 
@@ -184,3 +185,37 @@ def test_환율_매핑(monkeypatch):
 )
 def test_소스_종류를_밝힌다(collector, expected):
     assert collector.source_kind == expected
+
+
+def test_금액은_억원으로_바꾼다(monkeypatch):
+    # indicator 표가 단위를 억원으로 정의한다. 원으로 넣으면
+    # 정의와 어긋나고 NUMERIC(20,6) 도 넘친다 (예탁금 100조)
+    monkeypatch.setattr(mod, "data_go_kr_json", lambda path, **kw: DEPOSIT_ROWS)
+
+    result = KofiaCollector("DEPOSIT", "op", "invrDpsgAmt", 400).collect(SINCE)
+
+    assert result.records[0].value == Decimal(98917653413503) / Decimal(10**8)
+    assert result.records[0].value < Decimal(10**14)
+
+
+def test_구간을_일년_이하로_쪼갠다():
+    from collectors.market.public_indicators import split_months
+
+    # 관세청이 1년을 넘는 조회를 거부한다
+    chunks = split_months("202401", "202608", 12)
+
+    assert chunks == [("202401", "202412"), ("202501", "202512"), ("202601", "202608")]
+
+
+def test_구간이_짧으면_한_번만_부른다():
+    from collectors.market.public_indicators import split_months
+
+    assert split_months("202601", "202607", 12) == [("202601", "202607")]
+
+
+def test_쪼갠_구간이_겹치지_않는다():
+    from collectors.market.public_indicators import split_months
+
+    chunks = split_months("202401", "202612", 12)
+    for (_, prev_end), (next_start, _) in itertools.pairwise(chunks):
+        assert prev_end < next_start

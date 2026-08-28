@@ -16,6 +16,13 @@ KOFIA = "1160100/service/GetKofiaStatisticsInfoService"
 # 관세청 응답 마지막 행은 기간 합계다. 월이 아니므로 걸러야 한다
 CUSTOMS_TOTAL_ROW = "총계"
 
+# indicator 표가 예탁금·신용잔고·수급의 단위를 '억원' 으로 정의한다.
+# 원 단위로 넣으면 정의와 어긋나고 NUMERIC(20,6) 도 넘친다 (예탁금 100조)
+WON_PER_EOK = Decimal(10**8)
+
+# 관세청은 조회 구간을 1년으로 제한한다 (2026-08-29 실측)
+CUSTOMS_MAX_MONTHS = 12
+
 
 def to_decimal(value: str) -> Decimal | None:
     """빈 문자열과 잘못된 값을 None 으로 돌린다. 0 으로 만들지 않는다."""
@@ -33,6 +40,26 @@ def month_start(year_month: str) -> date | None:
     return date(int(year), int(month), 1)
 
 
+def split_months(start_ym: str, end_ym: str, size: int) -> list[tuple[str, str]]:
+    """`YYYYMM` 구간을 size 개월 이하로 쪼갠다.
+
+    관세청이 1년을 넘는 조회를 거부한다. 경계에서 달이 겹치지 않게 나눈다.
+    """
+    start = date(int(start_ym[:4]), int(start_ym[4:]), 1)
+    end = date(int(end_ym[:4]), int(end_ym[4:]), 1)
+
+    chunks = []
+    cursor = start
+    while cursor <= end:
+        year, month = cursor.year, cursor.month + size - 1
+        year, month = year + (month - 1) // 12, (month - 1) % 12 + 1
+        stop = min(date(year, month, 1), end)
+        chunks.append((f"{cursor:%Y%m}", f"{stop:%Y%m}"))
+        year, month = stop.year, stop.month + 1
+        cursor = date(year + (month - 1) // 12, (month - 1) % 12 + 1, 1)
+    return chunks
+
+
 class KofiaCollector(Collector):
     """금융투자협회 통계 한 필드를 지표로 만든다."""
 
@@ -40,13 +67,19 @@ class KofiaCollector(Collector):
     interval_sec = 86400
 
     def __init__(
-        self, indicator_code: str, operation: str, field: str, rows: int
+        self,
+        indicator_code: str,
+        operation: str,
+        field: str,
+        rows: int,
+        divisor: Decimal = WON_PER_EOK,
     ) -> None:
         self.indicator_code = indicator_code
         self.source_identifier = operation
         self._operation = operation
         self._field = field
         self._rows = rows
+        self._divisor = divisor
 
     def collect(self, since: datetime) -> CollectResult:
         items = data_go_kr_json(
@@ -58,7 +91,9 @@ class KofiaCollector(Collector):
             value = to_decimal(item.get(self._field, ""))
             day = date.fromisoformat(item["basDt"])
             if value is not None and day >= start:
-                records.append(IndicatorRecord(self.indicator_code, day, value))
+                records.append(
+                    IndicatorRecord(self.indicator_code, day, value / self._divisor)
+                )
         return CollectResult(success=True, records=records)
 
 
@@ -85,20 +120,25 @@ class CustomsExportCollector(Collector):
         self._end_ym = end_ym
         self._hs_code = hs_code
 
-    def collect(self, since: datetime) -> CollectResult:
+    def _fetch(self, start_ym: str, end_ym: str) -> list[dict[str, str]]:
         if self._hs_code:
-            items = data_go_kr_xml(
+            return data_go_kr_xml(
                 "1220000/Itemtrade/getItemtradeList",
-                strtYymm=self._start_ym,
-                endYymm=self._end_ym,
+                strtYymm=start_ym,
+                endYymm=end_ym,
                 hsSgn=self._hs_code,
             )
-        else:
-            items = data_go_kr_xml(
-                "1220000/Newtrade/getNewtradeList",
-                strtYymm=self._start_ym,
-                endYymm=self._end_ym,
-            )
+        return data_go_kr_xml(
+            "1220000/Newtrade/getNewtradeList", strtYymm=start_ym, endYymm=end_ym
+        )
+
+    def collect(self, since: datetime) -> CollectResult:
+        # 관세청은 한 번에 1년까지만 준다. 구간을 쪼개 여러 번 부른다
+        items: list[dict[str, str]] = []
+        for chunk_start, chunk_end in split_months(
+            self._start_ym, self._end_ym, CUSTOMS_MAX_MONTHS
+        ):
+            items += self._fetch(chunk_start, chunk_end)
 
         # 세부코드가 여러 행으로 오므로 달별로 더한다
         totals: dict[date, Decimal] = {}

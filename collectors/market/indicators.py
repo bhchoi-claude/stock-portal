@@ -19,6 +19,7 @@ from common.types import IndexClose
 from ..base import Collector, CollectResult, IndicatorRecord
 from .indicator_runner import run
 from .public_indicators import (
+    WON_PER_EOK,
     CustomsExportCollector,
     EcosCollector,
     KofiaCollector,
@@ -130,7 +131,8 @@ class ForeignNetCollector(Collector):
         return CollectResult(
             success=True,
             records=[
-                IndicatorRecord("FOREIGN_NET", day, total)
+                # indicator 표가 단위를 억원으로 정의한다
+                IndicatorRecord("FOREIGN_NET", day, total / WON_PER_EOK)
                 for day, total in totals
                 if day >= start
             ],
