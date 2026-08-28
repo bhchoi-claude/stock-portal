@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -34,6 +35,19 @@ def process_name(collector: Collector) -> str:
     return f"{collector.source_kind}.{type(collector).__name__}"
 
 
+def failure_window_hours(interval_sec: int, threshold: int, minimum: int) -> int:
+    """연속 `threshold` 회 실패를 담을 만큼의 관찰 창(시간).
+
+    PROJECT.md 10장은 '1시간 내 반복 시' 라고 적었지만 그것은 자주 도는
+    수집기를 전제한 표현이다. 하루 한 번 도는 수집기는 1시간 창 안에서
+    최대 1회만 실패하므로 임계값 2 에 영원히 닿지 못한다.
+    **완전히 죽은 소스가 영원히 조용해진다.**
+
+    주기 x 임계값을 창으로 잡으면 '최근 N 번 연속 실패' 를 잡는다.
+    """
+    return max(minimum, math.ceil(interval_sec * threshold / 3600))
+
+
 def store(collector: Collector, records: list) -> None:
     """지표값을 넣고 변화율을 다시 계산한다."""
     if not records:
@@ -50,14 +64,14 @@ def run(
     since: datetime,
     *,
     notifier: Notifier | None = None,
-    failure_window_hours: int = 1,
+    min_window_hours: int = 1,
     failure_threshold: int = 2,
 ) -> list[RunOutcome]:
     """수집기를 차례로 돌리고 결과를 돌려준다.
 
     실패는 `event_log` 에 남기고, 창 안에서 임계를 넘으면 알린다.
-    수집기 실패 알림은 '1시간 내 반복 시' 다 (PROJECT.md 10장).
     한 번 실패로 울리면 일시 장애마다 알림이 온다.
+    창은 수집기 주기에 맞춰 잡는다 (`failure_window_hours` 참조).
     """
     outcomes = []
 
@@ -77,7 +91,10 @@ def run(
             outcome = RunOutcome(name, success=False, records=0, error=repr(exc))
 
         outcomes.append(outcome)
-        _record(outcome, notifier, failure_window_hours, failure_threshold)
+        window = failure_window_hours(
+            collector.interval_sec, failure_threshold, min_window_hours
+        )
+        _record(outcome, notifier, window, failure_threshold)
 
     return outcomes
 

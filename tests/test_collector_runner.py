@@ -124,3 +124,19 @@ def test_반복_실패하면_알린다(runner):
 
 def test_이름에_소스와_클래스가_들어간다():
     assert process_name(FakeCollector()) == "krx.FakeCollector"
+
+
+def test_관찰_창은_수집기_주기에_맞춘다():
+    # 하루 한 번 도는 수집기는 1시간 창에서 최대 1회만 실패한다.
+    # 임계값 2 에 닿지 못해 죽은 소스가 영원히 조용해진다
+    from collectors.market.indicator_runner import failure_window_hours
+
+    assert failure_window_hours(86400, threshold=2, minimum=1) == 48
+    assert failure_window_hours(3600, threshold=2, minimum=1) == 2
+
+
+def test_짧은_주기에도_최소_창은_지킨다():
+    from collectors.market.indicator_runner import failure_window_hours
+
+    # 5분 주기면 창이 10분이지만 최소 1시간을 지킨다
+    assert failure_window_hours(300, threshold=2, minimum=1) == 1
