@@ -77,3 +77,12 @@ class InvestorFlow:
     foreign_net: Decimal
     institution_net: Decimal
     individual_net: Decimal
+
+
+@dataclass(frozen=True)
+class IndexClose:
+    """지수의 일별 종가. 지표 계산에 종가만 쓰므로 OHLC 를 담지 않는다."""
+
+    index_code: str
+    trade_date: date
+    close: Decimal

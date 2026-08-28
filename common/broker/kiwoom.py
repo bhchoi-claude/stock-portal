@@ -15,7 +15,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..env import require_env
-from ..types import Balance, Candle, InvestorFlow, Position, Quote
+from ..types import Balance, Candle, IndexClose, InvestorFlow, Position, Quote
 from .base import Broker, OrderRequest, OrderResult
 from .errors import PermanentError, RateLimitError, TransientError
 
@@ -34,9 +34,14 @@ INFO_PATH = "/api/dostk/stkinfo"
 MINUTE_API = "ka10080"
 QUOTE_API = "ka10001"
 FLOW_API = "ka10059"
+INDEX_API = "ka20006"
 
 # ka10059 순매수 금액은 백만원 단위다 (2026-08-28 실측)
 FLOW_UNIT = 1_000_000
+
+# ka20006 지수는 100 배로 온다. ka20003 현재가와 대조해 확정했다 (2026-08-28).
+# 종합(KOSPI) 678888 -> 6788.88, 변동성지수 5008 -> 50.08
+INDEX_SCALE = Decimal(100)
 
 TIMEOUT = 20.0
 
@@ -295,6 +300,31 @@ class KiwoomBroker(Broker):
             institution_net=Decimal(row["orgn"]) * FLOW_UNIT,
             individual_net=Decimal(row["ind_invsr"]) * FLOW_UNIT,
         )
+
+    def get_index_closes(self, index_code: str, end: date) -> list[IndexClose]:
+        """업종·지수 일별 종가. Broker 규격 밖의 키움 전용 조회다.
+
+        한 번에 600건(약 2.4년)이 온다. 시간 오름차순으로 돌려준다.
+
+        업종코드는 `001` 종합(KOSPI), `101` 종합(KOSDAQ), `603` 변동성지수다.
+        """
+        data = self._call(
+            INDEX_API,
+            CHART_PATH,
+            {"inds_cd": index_code, "base_dt": end.strftime("%Y%m%d")},
+        )
+        rows = data.get("inds_dt_pole_qry") or []
+        closes = [
+            IndexClose(
+                index_code=index_code,
+                trade_date=date.fromisoformat(row["dt"]),
+                close=strip_sign(row["cur_prc"]) / INDEX_SCALE,
+            )
+            for row in rows
+            if row.get("dt")
+        ]
+        closes.sort(key=lambda c: c.trade_date)
+        return closes
 
     def get_balance(self, account_id: str) -> Balance:
         raise NotImplementedError("잔고 조회는 아직 구현하지 않았다.")

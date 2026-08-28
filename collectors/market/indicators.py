@@ -1,0 +1,183 @@
+# 키움 지수에서 시장분석 지표를 만드는 수집기와 CLI
+
+from __future__ import annotations
+
+import itertools
+import logging
+import sys
+from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from common.broker.kiwoom import KiwoomBroker
+from common.config import load_config
+from common.db.conn import connect, transaction
+from common.notify.telegram import TelegramNotifier
+from common.types import IndexClose
+
+from ..base import Collector, CollectResult, IndicatorRecord
+from .indicator_runner import run
+
+logger = logging.getLogger(__name__)
+
+SEOUL = ZoneInfo("Asia/Seoul")
+
+
+def ma_gap_records(
+    closes: list[IndexClose], window: int, since: date
+) -> list[IndicatorRecord]:
+    """이동평균 이격도(%) 를 만든다.
+
+    이격도 = (종가 - N일 이동평균) / N일 이동평균 x 100.
+
+    앞의 window-1 일은 평균을 낼 수 없어 값이 없다. 0 으로 채우지 않는다.
+    `closes` 는 시간 오름차순이어야 한다.
+    """
+    records = []
+    for i in range(window - 1, len(closes)):
+        bar = closes[i]
+        if bar.trade_date < since:
+            continue
+        average = sum(c.close for c in closes[i - window + 1 : i + 1]) / window
+        gap = (bar.close - average) / average * 100
+        records.append(IndicatorRecord("KOSPI_MA200_GAP", bar.trade_date, gap))
+    return records
+
+
+class VkospiCollector(Collector):
+    """변동성지수를 그대로 지표로 쓴다."""
+
+    source_kind = "kiwoom"
+    source_identifier = "ka20006"
+    interval_sec = 86400
+
+    def __init__(self, broker: KiwoomBroker, index_code: str, end: date) -> None:
+        self._broker = broker
+        self._index_code = index_code
+        self._end = end
+
+    def collect(self, since: datetime) -> CollectResult:
+        closes = self._broker.get_index_closes(self._index_code, self._end)
+        start = since.date()
+        return CollectResult(
+            success=True,
+            records=[
+                IndicatorRecord("VKOSPI", c.trade_date, c.close)
+                for c in closes
+                if c.trade_date >= start
+            ],
+        )
+
+
+class KospiMaGapCollector(Collector):
+    """KOSPI 이동평균 이격도. 수집이 아니라 파생 계산이다."""
+
+    source_kind = "kiwoom"
+    source_identifier = "ka20006"
+    interval_sec = 86400
+
+    def __init__(
+        self, broker: KiwoomBroker, index_code: str, end: date, window: int
+    ) -> None:
+        self._broker = broker
+        self._index_code = index_code
+        self._end = end
+        self._window = window
+
+    def collect(self, since: datetime) -> CollectResult:
+        closes = self._broker.get_index_closes(self._index_code, self._end)
+        if len(closes) < self._window:
+            return CollectResult(
+                success=False,
+                error=f"이동평균에 {self._window}일이 필요한데 {len(closes)}일뿐입니다.",
+            )
+        return CollectResult(
+            success=True,
+            records=ma_gap_records(closes, self._window, since.date()),
+        )
+
+
+def daily_returns(closes: list[IndexClose]) -> dict[date, Decimal]:
+    """전일 대비 등락률(%). 첫날은 이전 값이 없어 빠진다."""
+    returns = {}
+    for prev, cur in itertools.pairwise(closes):
+        if prev.close:
+            returns[cur.trade_date] = (cur.close - prev.close) / prev.close * 100
+    return returns
+
+
+def fill_market_returns(kospi: list[IndexClose], kosdaq: list[IndexClose]) -> int:
+    """판정일의 시장 등락률을 채운다. 판정 다음 날 채우는 값이다.
+
+    이것이 있어야 나중에 '위험 판정일의 시장이 실제로 어땠는지' 를 볼 수 있다
+    (SCHEMA.md market_regime).
+    """
+    kospi_returns = daily_returns(kospi)
+    kosdaq_returns = daily_returns(kosdaq)
+
+    with connect() as conn, transaction(conn) as cur:
+        cur.execute("SELECT trade_date FROM market_regime WHERE kospi_return IS NULL")
+        pending = [row[0] for row in cur.fetchall()]
+        filled = [
+            (kospi_returns[day], kosdaq_returns.get(day), day)
+            for day in pending
+            if day in kospi_returns
+        ]
+        if filled:
+            cur.executemany(
+                "UPDATE market_regime SET kospi_return = %s, kosdaq_return = %s"
+                " WHERE trade_date = %s",
+                filled,
+            )
+    return len(filled)
+
+
+def main(argv: list[str]) -> int:
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+
+    params = load_config("collect")["indicators"]
+    # 수집기 CLI 다. 전략이나 피드가 아니므로 현재 시각을 직접 읽어도 된다
+    end = date.fromisoformat(argv[1]) if len(argv) > 1 else datetime.now(SEOUL).date()
+    since = datetime.combine(
+        end - timedelta(days=params["backfill_days"]), datetime.min.time(), UTC
+    )
+
+    broker = KiwoomBroker(is_paper=params["use_paper"])
+    collectors = [
+        VkospiCollector(broker, params["vkospi_code"], end),
+        KospiMaGapCollector(broker, params["kospi_code"], end, params["ma_window"]),
+    ]
+
+    try:
+        notifier = TelegramNotifier.from_env()
+    except RuntimeError:
+        logger.exception("알림 설정이 없어 실패해도 알리지 못합니다")
+        notifier = None
+
+    outcomes = run(collectors, since, notifier=notifier)
+    for outcome in outcomes:
+        logger.info(
+            "%s %s %d건 %s",
+            outcome.name,
+            "성공" if outcome.success else "실패",
+            outcome.records,
+            outcome.error or "",
+        )
+
+    filled = fill_market_returns(
+        broker.get_index_closes(params["kospi_code"], end),
+        broker.get_index_closes(params["kosdaq_code"], end),
+    )
+
+    failed = [o.name for o in outcomes if not o.success]
+    print(
+        f"지표 {sum(o.records for o in outcomes)}건 적재,"
+        f" 시장 등락률 {filled}일 채움, 실패 {len(failed)}건."
+    )
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
