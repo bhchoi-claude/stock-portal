@@ -6,6 +6,7 @@ import logging
 import sys
 from datetime import date
 from decimal import Decimal
+from fractions import Fraction
 
 from common.config import load_config
 from common.db.actions import upsert_corporate_actions
@@ -27,6 +28,25 @@ SOURCE = "krx"
 MERGE = "merge"
 
 
+def is_simple_ratio(before: int, after: int, max_denominator: int, tol: float) -> bool:
+    """감자·액면병합인지 비율의 모양으로 가른다.
+
+    감자와 액면병합은 1/2, 1/5, 2/5 처럼 단순 분수다. 주식수 비의 역수가
+    작은 분모의 분수로 떨어진다.
+
+    인적분할과 자기주식 소각도 주식수를 줄이지만 비율이 임의의 값이다
+    (삼성바이오로직스 2025-11-24 은 1.5375, 코스온은 1.0664).
+    **그리고 그 비율은 가격 조정 비율이 아니다.** 인적분할의 조정 비율은
+    분할 가치 비율이고, 소각은 애초에 가격을 조정하지 않는다.
+    """
+    inverse = before / after
+    fraction = Fraction(inverse).limit_denominator(max_denominator)
+    return (
+        fraction.denominator <= max_denominator
+        and abs(float(fraction) - inverse) / inverse < tol
+    )
+
+
 def shares_on(bas_dd: str) -> dict[str, int]:
     """그날 세 시장의 종목별 상장주식수."""
     shares: dict[str, int] = {}
@@ -41,6 +61,8 @@ def detect_actions(
     before: dict[str, int],
     after: dict[str, int],
     jumped: set[str],
+    max_denominator: int = 4,
+    tol: float = 0.005,
 ) -> tuple[list[CorporateAction], list[str]]:
     """상장주식수가 바뀌고 가격도 점프한 종목을 찾는다.
 
@@ -69,15 +91,22 @@ def detect_actions(
         if now > was:
             increased.append(stock_id)
             continue
+        simple = is_simple_ratio(was, now, max_denominator, tol)
         actions.append(
             CorporateAction(
                 stock_id=stock_id,
                 effective_date=day,
                 action_type=MERGE,
-                adjusts_price=True,
+                # 비율이 단순 분수가 아니면 인적분할이나 소각이다.
+                # 이벤트는 기록하되 가격 조정에는 쓰지 않는다
+                adjusts_price=simple,
                 ratio=Decimal(now) / Decimal(was),
                 source=SOURCE,
-                detail={"shares_before": was, "shares_after": now},
+                detail={
+                    "shares_before": was,
+                    "shares_after": now,
+                    "simple_ratio": simple,
+                },
             )
         )
     return actions, increased
@@ -114,7 +143,14 @@ def main(argv: list[str]) -> int:
     for index, day in enumerate(days[1:], 2):
         after = shares_on(day.strftime("%Y%m%d"))
         jumped = {sid for sid, d in jumps if d == day}
-        actions, increased = detect_actions(day, before, after, jumped)
+        actions, increased = detect_actions(
+            day,
+            before,
+            after,
+            jumped,
+            params["max_denominator"],
+            params["ratio_tolerance"],
+        )
         increased_all += [(day, sid) for sid in increased]
 
         if actions:

@@ -66,7 +66,11 @@ def test_상세에_주식수를_남긴다():
     # 감자와 액면병합을 한 갈래로 묶었으므로 근거를 남겨야 한다
     actions, _ = detect_actions(DAY, {"KRX:X": 100}, {"KRX:X": 50}, JUMPED)
 
-    assert actions[0].detail == {"shares_before": 100, "shares_after": 50}
+    assert actions[0].detail == {
+        "shares_before": 100,
+        "shares_after": 50,
+        "simple_ratio": True,
+    }
 
 
 def test_가격이_점프하지_않으면_이벤트가_아니다():
@@ -86,3 +90,39 @@ def test_주식수와_가격이_모두_움직여야_이벤트다():
     )
 
     assert actions == []
+
+
+def test_단순_분수면_가격_조정_대상이다():
+    # 5:1 감자
+    actions, _ = detect_actions(DAY, {"KRX:X": 500}, {"KRX:X": 100}, JUMPED)
+
+    assert actions[0].adjusts_price is True
+    assert actions[0].detail["simple_ratio"] is True
+
+
+def test_임의_비율이면_기록만_하고_조정하지_않는다():
+    # 코스온 2023-10-11. 23,940,660 -> 22,450,397 은 1/비율이 1.0664 다.
+    # 자기주식 소각이고 가격 조정 대상이 아니다
+    actions, _ = detect_actions(
+        DAY, {"KRX:069110": 23940660}, {"KRX:069110": 22450397}, {"KRX:069110"}
+    )
+
+    assert len(actions) == 1
+    assert actions[0].adjusts_price is False
+
+
+def test_인적분할도_조정하지_않는다():
+    # 삼성바이오로직스 2025-11-24. 1/비율 1.5375.
+    # 주식수 비는 인적분할의 가격 조정 비율이 아니다
+    actions, _ = detect_actions(
+        DAY, {"KRX:207940": 71174000}, {"KRX:207940": 46292000}, {"KRX:207940"}
+    )
+
+    assert actions[0].adjusts_price is False
+
+
+def test_이분의오도_단순_분수다():
+    # 0.4 = 2/5. 분모 4 이하로 표현되는 5/2 다
+    actions, _ = detect_actions(DAY, {"KRX:X": 500}, {"KRX:X": 200}, JUMPED)
+
+    assert actions[0].adjusts_price is True
