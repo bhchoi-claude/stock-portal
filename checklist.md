@@ -30,9 +30,14 @@
 
 ## 사용자 조치 필요
 
-- [ ] **data.go.kr 인증키** — 관세청·금융투자협회 두 API 활용신청. 둘 다 자동승인
-- [ ] **ECOS 인증키** — ecos.bok.or.kr 회원가입. 1일 이내 사용 가능
-- [ ] `DART_API_KEY` 를 서버 `.env` 에 넣기 — Phase 2 잔여분과 Phase 5 에 쓴다
+서버 `.env` 에 아래 세 줄을 채운다. 이름은 `.env.example` 에 적어 뒀다.
+
+- [ ] `DATA_GO_KR_API_KEY` — data.go.kr 계정 하나로 관세청·금융투자협회
+      두 API 활용신청. 둘 다 자동승인이고 인증키는 계정당 하나다
+- [ ] `ECOS_API_KEY` — ecos.bok.or.kr 회원가입 시 자동 발급
+- [ ] `DART_API_KEY` — Phase 2 잔여분(인적분할·배당)과 Phase 5 에 쓴다
+
+**키 값은 커밋하지 않고 대화에도 남기지 않는다.** 서버에서 직접 넣는다.
 
 ## 확인이 남은 것
 
