@@ -1,0 +1,11 @@
+[Unit]
+Description=stock-portal 분봉 수집 타이머
+
+[Timer]
+# 키움은 당일 분봉을 바로 준다. KRX 일봉과 달리 다음 날을 기다리지 않는다.
+# 장 마감(15:30)과 동시호가 정리를 지나 16:10 에 받는다
+OnCalendar=Mon-Fri 16:10 Asia/Seoul
+Persistent=true
+
+[Install]
+WantedBy=timers.target
