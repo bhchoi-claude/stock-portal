@@ -53,7 +53,7 @@
 
 - [ ] `FOREIGN_NET` — `trading_flow` 집계. **상위 200종목만 있어 시장 전체가
       아니다.** 전 종목으로 넓힐지 결정해야 한다 (`SCHEMA.md` 미결 사항)
-- [ ] `VKOSPI` / `KOSPI_MA200_GAP` — 키움 `ka20006`. **막히지 않았다**
+- [x] `VKOSPI` / `KOSPI_MA200_GAP` (2026-08-28) — 키움 `ka20006`. 254일치 적재
 - [ ] `DEPOSIT` / `CREDIT_BALANCE` — data.go.kr 인증키 대기
 - [ ] `USDKRW` — ECOS 인증키 대기
 - [ ] `EXPORT_YOY` / `EXPORT_SEMI_YOY` — data.go.kr 인증키 대기
@@ -63,7 +63,7 @@
 - [x] `config/regime_rules.yaml` (2026-08-28) — 임계값은 전부 임시값이다
 - [x] `RegimeEngine` (2026-08-28) — 결측 정규화 테스트 포함
 - [x] 일 1회 판정 → `market_regime` 적재 (2026-08-28) — 일 1회 유닛에 연결
-- [ ] 익일 `kospi_return` 채우기 — 키움 `ka20006`. **막히지 않았다**
+- [x] 익일 `kospi_return` 채우기 (2026-08-28) — `kosdaq_return` 도 함께
 - [x] 국면 전환 시 알림 (2026-08-28) — 같은 국면 유지 시 무음. 실검증
 
 ## Phase 3 완료 기준

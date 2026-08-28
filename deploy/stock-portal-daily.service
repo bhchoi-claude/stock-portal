@@ -10,7 +10,14 @@ WorkingDirectory=/home/bh-server/stock-portal
 # 시스템 파이썬으로 실행하면 psycopg 를 찾지 못한다
 ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.daily
 
-# 국면 판정은 지표가 갱신된 뒤에 돈다. 지표가 없으면 스스로 보류한다
+# 지표 수집이 국면 판정보다 먼저다. 판정은 지표 스냅샷을 그대로 기록한다
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.indicators
+
+# 지표가 없으면 판정은 스스로 보류한다
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.regime
+
+# 판정 행이 생긴 뒤라야 그날의 시장 등락률을 채울 수 있다.
+# 지표 수집이 두 번 도는 이유다 (같은 값이라 덮어써도 무해하다)
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.indicators
 StandardOutput=append:/home/bh-server/stock-portal/logs/daily.log
 StandardError=append:/home/bh-server/stock-portal/logs/daily.log
