@@ -166,3 +166,59 @@ def test_상장중인_종목은_폐지일을_매기지_않는다(cur):
     master.refine_delisted_at(cur)
 
     assert master.get_stock(cur, TEST_STOCK_ID).delisted_at is None
+
+
+def test_조정계수는_이벤트_이전_가격에만_붙는다(cur):
+    from decimal import Decimal
+
+    from common.db.prices import apply_adj_factor, reset_adj_factor
+
+    master.upsert_stocks(cur, [sample_stock()])
+    cur.executemany(
+        "INSERT INTO price_daily (stock_id, trade_date, open, high, low, close, volume)"
+        " VALUES (%s, %s, 100, 100, 100, 100, 1)",
+        [
+            (TEST_STOCK_ID, date(2024, 11, 8)),
+            (TEST_STOCK_ID, date(2024, 11, 11)),
+            (TEST_STOCK_ID, date(2024, 11, 12)),
+        ],
+    )
+    reset_adj_factor(cur, [TEST_STOCK_ID])
+
+    # 50:1 감자. 이전 가격에 50 을 곱해야 이어진다
+    apply_adj_factor(cur, TEST_STOCK_ID, date(2024, 11, 11), Decimal("0.02"))
+
+    cur.execute(
+        "SELECT trade_date, adj_factor FROM price_daily WHERE stock_id = %s"
+        " ORDER BY trade_date",
+        (TEST_STOCK_ID,),
+    )
+    assert cur.fetchall() == [
+        (date(2024, 11, 8), Decimal("50.0000000000")),
+        (date(2024, 11, 11), Decimal("1.0000000000")),
+        (date(2024, 11, 12), Decimal("1.0000000000")),
+    ]
+
+
+def test_이벤트가_둘이면_조정계수가_누적된다(cur):
+    from decimal import Decimal
+
+    from common.db.prices import apply_adj_factor, reset_adj_factor
+
+    master.upsert_stocks(cur, [sample_stock()])
+    cur.executemany(
+        "INSERT INTO price_daily (stock_id, trade_date, open, high, low, close, volume)"
+        " VALUES (%s, %s, 100, 100, 100, 100, 1)",
+        [(TEST_STOCK_ID, date(2024, 1, 5)), (TEST_STOCK_ID, date(2024, 6, 5))],
+    )
+    reset_adj_factor(cur, [TEST_STOCK_ID])
+
+    apply_adj_factor(cur, TEST_STOCK_ID, date(2024, 3, 1), Decimal("0.5"))
+    apply_adj_factor(cur, TEST_STOCK_ID, date(2024, 9, 1), Decimal("0.2"))
+
+    cur.execute(
+        "SELECT adj_factor FROM price_daily WHERE stock_id = %s AND trade_date = %s",
+        (TEST_STOCK_ID, date(2024, 1, 5)),
+    )
+    # 두 이벤트 모두 이후에 있으므로 2 x 5 = 10
+    assert cur.fetchone()[0] == Decimal("10.0000000000")

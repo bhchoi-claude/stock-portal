@@ -28,8 +28,10 @@ SOURCE = "krx"
 MERGE = "merge"
 
 
-def is_simple_ratio(before: int, after: int, max_denominator: int, tol: float) -> bool:
-    """감자·액면병합인지 비율의 모양으로 가른다.
+def simple_ratio(
+    before: int, after: int, max_denominator: int, tol: float
+) -> Fraction | None:
+    """감자·액면병합의 비율을 단순 분수로 돌려준다. 아니면 None.
 
     감자와 액면병합은 1/2, 1/5, 2/5 처럼 단순 분수다. 주식수 비의 역수가
     작은 분모의 분수로 떨어진다.
@@ -38,13 +40,26 @@ def is_simple_ratio(before: int, after: int, max_denominator: int, tol: float) -
     (삼성바이오로직스 2025-11-24 은 1.5375, 코스온은 1.0664).
     **그리고 그 비율은 가격 조정 비율이 아니다.** 인적분할의 조정 비율은
     분할 가치 비율이고, 소각은 애초에 가격을 조정하지 않는다.
+
+    돌려주는 값은 '이전/이후' 다. 50:1 감자면 50 이다.
+
+    단주 처리 때문에 주식수 비가 딱 떨어지지 않는다. 쌍방울은
+    262,592,129 / 5,251,842 = 50.0000055 다. 실제 감자 비율은 50:1 이므로
+    **분수로 스냅해서 쓴다.** 그대로 두면 조정가가 13450.0015 가 된다.
     """
     inverse = before / after
     fraction = Fraction(inverse).limit_denominator(max_denominator)
-    return (
+    if (
         fraction.denominator <= max_denominator
         and abs(float(fraction) - inverse) / inverse < tol
-    )
+    ):
+        return fraction
+    return None
+
+
+def is_simple_ratio(before: int, after: int, max_denominator: int, tol: float) -> bool:
+    """감자·액면병합인지 비율의 모양으로 가른다."""
+    return simple_ratio(before, after, max_denominator, tol) is not None
 
 
 def shares_on(bas_dd: str) -> dict[str, int]:
@@ -91,7 +106,14 @@ def detect_actions(
         if now > was:
             increased.append(stock_id)
             continue
-        simple = is_simple_ratio(was, now, max_denominator, tol)
+        snapped = simple_ratio(was, now, max_denominator, tol)
+        simple = snapped is not None
+        # 조정 대상이면 스냅한 분수의 역수를, 아니면 관측된 주식수 비를 쓴다
+        ratio = (
+            Decimal(snapped.denominator) / Decimal(snapped.numerator)
+            if snapped
+            else Decimal(now) / Decimal(was)
+        )
         actions.append(
             CorporateAction(
                 stock_id=stock_id,
@@ -100,7 +122,7 @@ def detect_actions(
                 # 비율이 단순 분수가 아니면 인적분할이나 소각이다.
                 # 이벤트는 기록하되 가격 조정에는 쓰지 않는다
                 adjusts_price=simple,
-                ratio=Decimal(now) / Decimal(was),
+                ratio=ratio,
                 source=SOURCE,
                 detail={
                     "shares_before": was,

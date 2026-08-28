@@ -90,3 +90,32 @@ def price_jumps(
         (low, high),
     )
     return set(cur.fetchall())
+
+
+def reset_adj_factor(cur: psycopg.Cursor, stock_ids: Sequence[str]) -> int:
+    """조정계수를 1 로 되돌린다. 다시 계산하기 전에 부른다."""
+    if not stock_ids:
+        return 0
+    cur.execute(
+        "UPDATE price_daily SET adj_factor = 1 WHERE stock_id = ANY(%s)",
+        (list(stock_ids),),
+    )
+    return cur.rowcount
+
+
+def apply_adj_factor(
+    cur: psycopg.Cursor, stock_id: str, effective_date: date, ratio: Decimal
+) -> int:
+    """이벤트 이전 가격의 조정계수에 비율의 역수를 곱한다.
+
+    이벤트 당일 가격은 이미 조정된 값이므로 건드리지 않는다.
+    50:1 감자(ratio 0.02)면 그 전 가격에 50 을 곱해야 이어진다.
+
+    이벤트마다 한 번씩 부르면 누적곱이 된다. 순서는 상관없다.
+    """
+    cur.execute(
+        "UPDATE price_daily SET adj_factor = adj_factor / %s"
+        " WHERE stock_id = %s AND trade_date < %s",
+        (ratio, stock_id, effective_date),
+    )
+    return cur.rowcount

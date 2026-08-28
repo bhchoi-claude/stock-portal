@@ -45,3 +45,18 @@ def upsert_corporate_actions(
         ],
     )
     return len(actions)
+
+
+def adjusting_actions(cur: psycopg.Cursor) -> list[tuple[str, object, object]]:
+    """가격 조정 대상인 이벤트. 조정계수 계산이 쓴다."""
+    cur.execute(
+        "SELECT stock_id, effective_date, ratio FROM corporate_action"
+        " WHERE adjusts_price AND ratio > 0 ORDER BY stock_id, effective_date"
+    )
+    return cur.fetchall()
+
+
+def action_stock_ids(cur: psycopg.Cursor) -> list[str]:
+    """조정 이벤트가 있는 종목. 조정계수를 되돌릴 범위다."""
+    cur.execute("SELECT DISTINCT stock_id FROM corporate_action")
+    return [row[0] for row in cur.fetchall()]

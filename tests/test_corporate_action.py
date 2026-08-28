@@ -126,3 +126,24 @@ def test_이분의오도_단순_분수다():
     actions, _ = detect_actions(DAY, {"KRX:X": 500}, {"KRX:X": 200}, JUMPED)
 
     assert actions[0].adjusts_price is True
+
+
+def test_비율을_정확한_분수로_스냅한다():
+    # 쌍방울. 262,592,129 / 5,251,842 = 50.0000055 이지만 실제 감자는 50:1 이다.
+    # 단주 처리 때문에 딱 떨어지지 않는다. 그대로 두면 조정가가 13450.0015 가 된다
+    actions, _ = detect_actions(
+        DAY, {"KRX:102280": 262592129}, {"KRX:102280": 5251842}, {"KRX:102280"}
+    )
+
+    assert actions[0].ratio == Decimal("0.02")
+    assert Decimal(1) / actions[0].ratio == Decimal(50)
+
+
+def test_조정_대상이_아니면_관측값을_그대로_둔다():
+    # 스냅할 근거가 없다. 관측된 주식수 비를 남긴다
+    actions, _ = detect_actions(
+        DAY, {"KRX:069110": 23940660}, {"KRX:069110": 22450397}, {"KRX:069110"}
+    )
+
+    assert actions[0].adjusts_price is False
+    assert round(actions[0].ratio, 4) == Decimal("0.9378")
