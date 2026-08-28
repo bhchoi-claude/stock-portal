@@ -149,15 +149,25 @@ class CustomsExportCollector(Collector):
                 continue
             totals[day] = totals.get(day, Decimal(0)) + amount
 
-        start = since.date()
-        return CollectResult(
-            success=True,
-            records=[
-                IndicatorRecord(self.indicator_code, day, amount)
-                for day, amount in sorted(totals.items())
-                if day >= start
-            ],
-        )
+        # indicator 표가 단위를 % 로 정의한다. 코드 이름도 YOY 다.
+        # 금액이 아니라 전년 동월 대비 증가율을 넣는다
+        return CollectResult(success=True, records=self._to_yoy(totals, since.date()))
+
+    def _to_yoy(
+        self, totals: dict[date, Decimal], start: date
+    ) -> list[IndicatorRecord]:
+        """전년 동월 대비 증가율(%). 12개월 전 값이 없으면 만들지 않는다."""
+        records = []
+        for day, amount in sorted(totals.items()):
+            if day < start:
+                continue
+            previous = totals.get(day.replace(year=day.year - 1))
+            if previous is None or previous == 0:
+                logger.info("%s 는 전년 동월 값이 없어 건너뜁니다", day)
+                continue
+            rate = (amount - previous) / previous * 100
+            records.append(IndicatorRecord(self.indicator_code, day, rate))
+        return records
 
 
 class EcosCollector(Collector):

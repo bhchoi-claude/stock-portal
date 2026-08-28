@@ -114,28 +114,34 @@ def test_since_이전_지표는_만들지_않는다(monkeypatch):
 
 
 def test_수출총액에서_총계_행을_뺀다(monkeypatch):
-    monkeypatch.setattr(mod, "data_go_kr_xml", lambda path, **kw: CUSTOMS_ROWS)
+    # 총계 행을 그대로 두면 '총계' 라는 달을 만들려다 깨지거나
+    # 존재하지 않는 달이 지표에 들어간다
+    rows = [{"expDlr": "50000000000", "year": "2025.06"}, *CUSTOMS_ROWS]
+    monkeypatch.setattr(mod, "data_go_kr_xml", lambda path, **kw: rows)
 
-    result = CustomsExportCollector("EXPORT_YOY", "202601", "202607").collect(SINCE)
+    result = CustomsExportCollector("EXPORT_YOY", "202501", "202607").collect(
+        datetime(2026, 1, 1, tzinfo=UTC)
+    )
 
-    # 총계를 빼지 않으면 한 달치가 두 배 이상으로 들어간다
-    assert [r.period_date for r in result.records] == [
-        date(2026, 6, 1),
-        date(2026, 7, 1),
-    ]
-    assert result.records[0].value == Decimal(101956159193)
+    # 전년 동월이 있는 2026-06 만 남는다. 총계는 달이 아니다
+    assert [r.period_date for r in result.records] == [date(2026, 6, 1)]
 
 
 def test_품목별_세부코드를_달별로_합산한다(monkeypatch):
-    monkeypatch.setattr(mod, "data_go_kr_xml", lambda path, **kw: ITEM_ROWS)
+    # 2025-06 을 넣어 전년 동월 대비가 계산되게 한다
+    rows = [
+        {"expDlr": "1000000000", "hsCode": "8542311000", "year": "2025.06"},
+        *ITEM_ROWS,
+    ]
+    monkeypatch.setattr(mod, "data_go_kr_xml", lambda path, **kw: rows)
 
     result = CustomsExportCollector(
-        "EXPORT_SEMI_YOY", "202601", "202607", hs_code="8542"
-    ).collect(SINCE)
+        "EXPORT_SEMI_YOY", "202501", "202607", hs_code="8542"
+    ).collect(datetime(2026, 1, 1, tzinfo=UTC))
 
     got = {r.period_date: r.value for r in result.records}
-    assert got[date(2026, 6, 1)] == Decimal(2286791909 + 11175623231 + 188327334)
-    assert got[date(2026, 7, 1)] == Decimal(999)
+    total = Decimal(2286791909 + 11175623231 + 188327334)
+    assert got[date(2026, 6, 1)] == (total - Decimal(10**9)) / Decimal(10**9) * 100
 
 
 def test_품목별은_품목별_api_를_쓴다(monkeypatch):
@@ -219,3 +225,36 @@ def test_쪼갠_구간이_겹치지_않는다():
     chunks = split_months("202401", "202612", 12)
     for (_, prev_end), (next_start, _) in itertools.pairwise(chunks):
         assert prev_end < next_start
+
+
+YOY_ROWS = [
+    {"expDlr": "100", "year": "2025.06"},
+    {"expDlr": "120", "year": "2026.06"},
+    {"expDlr": "200", "year": "2026.07"},
+]
+
+
+def test_수출은_금액이_아니라_전년동월_증가율이다(monkeypatch):
+    # indicator 표가 단위를 % 로 정의하고 코드 이름도 YOY 다
+    monkeypatch.setattr(mod, "data_go_kr_xml", lambda path, **kw: YOY_ROWS)
+
+    result = CustomsExportCollector("EXPORT_YOY", "202501", "202607").collect(
+        datetime(2026, 1, 1, tzinfo=UTC)
+    )
+
+    got = {r.period_date: r.value for r in result.records}
+    # 2026-06 은 100 -> 120 이므로 +20%
+    assert got[date(2026, 6, 1)] == Decimal(20)
+    # 2026-07 은 전년 동월 값이 없어 만들지 않는다
+    assert date(2026, 7, 1) not in got
+
+
+def test_전년_동월이_없으면_증가율을_만들지_않는다(monkeypatch):
+    # 0 으로 채우면 '증가율 0%' 라는 값이 들어간다
+    monkeypatch.setattr(
+        mod, "data_go_kr_xml", lambda path, **kw: [{"expDlr": "100", "year": "2026.06"}]
+    )
+
+    result = CustomsExportCollector("EXPORT_YOY", "202601", "202607").collect(SINCE)
+
+    assert result.records == []
