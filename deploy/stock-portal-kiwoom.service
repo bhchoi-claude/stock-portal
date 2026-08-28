@@ -1,0 +1,16 @@
+[Unit]
+Description=stock-portal 키움 수집 (분봉·수급)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+
+# 앞이 실패해도 뒤를 돌린다. 두 수집은 서로 의존하지 않는다
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.price_minute
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.trading_flow
+
+StandardOutput=append:/home/bh-server/stock-portal/logs/kiwoom.log
+StandardError=append:/home/bh-server/stock-portal/logs/kiwoom.log
