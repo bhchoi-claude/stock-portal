@@ -25,11 +25,11 @@
 
 ## 플러그인 구조 (막히지 않음)
 
-- [ ] `Collector` ABC + `CollectResult` / `IndicatorRecord` (`INTERFACES.md` 6장)
-- [ ] 수집기 실행기 — 한 수집기의 예외가 다른 수집기로 번지지 않는다
-- [ ] 실패를 `event_log` 에 남기고 `source.last_success_at` 을 갱신한다
-- [ ] 1시간 내 반복 실패 시 알림
-- [ ] `indicator_value` 적재 + 전기 대비 `change_rate` 계산
+- [x] `Collector` ABC + `CollectResult` / `IndicatorRecord` (2026-08-28)
+- [x] 수집기 실행기 (2026-08-28) — `collectors/market/indicator_runner.py`
+- [x] 실패를 `event_log` 에 남기고 `source.last_success_at` 을 갱신한다
+- [x] 1시간 내 반복 실패 시 알림 (2026-08-28)
+- [x] `indicator_value` 적재 + 전기 대비 `change_rate` 계산 (2026-08-28)
 
 ## 지표 수집기
 
@@ -42,8 +42,8 @@
 
 ## 국면 판정
 
-- [ ] `config/regime_rules.yaml` — 임계값은 전부 여기 둔다
-- [ ] `RegimeEngine` — 지표 결측 시 정규화 (`CLAUDE.md` 필수 테스트)
+- [x] `config/regime_rules.yaml` (2026-08-28) — 임계값은 전부 임시값이다
+- [x] `RegimeEngine` (2026-08-28) — 결측 정규화 테스트 포함
 - [ ] 일 1회 판정 → `market_regime` 적재
 - [ ] 익일 `kospi_return` 채우기 — KRX 지수 API 대기
 - [ ] 국면 전환 시 알림
