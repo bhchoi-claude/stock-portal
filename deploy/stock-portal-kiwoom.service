@@ -8,6 +8,10 @@ Type=oneshot
 User=bh-server
 WorkingDirectory=/home/bh-server/stock-portal
 
+# 파티션이 없으면 분봉 적재가 실패한다. 반드시 먼저 돌린다.
+# 여기만 - 를 붙이지 않는다
+ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.partitions
+
 # 앞이 실패해도 뒤를 돌린다. 두 수집은 서로 의존하지 않는다
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.price_minute
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.trading_flow

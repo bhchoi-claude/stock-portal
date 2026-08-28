@@ -53,3 +53,8 @@ trading_flow:
   universe_size: 200
 
   use_paper: true
+
+partitions:
+  # 이번 달부터 몇 개월치 분봉 파티션을 확보할지.
+  # 배치가 몇 달 멈춰도 적재가 실패하지 않을 만큼 앞서 둔다
+  months_ahead: 18

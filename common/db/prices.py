@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 
 import psycopg
+import psycopg.sql
 
 from .models import PriceDaily
 
@@ -190,3 +191,29 @@ def upsert_trading_flow(cur: psycopg.Cursor, flows: Sequence[Any]) -> int:
         ],
     )
     return len(flows)
+
+
+def existing_minute_partitions(cur: psycopg.Cursor) -> set[str]:
+    """이미 있는 price_minute 월 파티션 이름."""
+    cur.execute(
+        "SELECT relname FROM pg_class"
+        " WHERE relname LIKE 'price_minute_%%' AND relkind = 'r'"
+    )
+    return {row[0] for row in cur.fetchall()}
+
+
+def create_minute_partition(cur: psycopg.Cursor, month: datetime) -> str:
+    """한 달치 파티션을 만든다. 경계는 UTC 다.
+
+    세션 타임존에 기대면 경계가 9시간 어긋난다. 마이그레이션이 오프셋을
+    명시한 것과 같은 이유다.
+    """
+    nxt = (month + timedelta(days=32)).replace(day=1)
+    name = f"price_minute_{month:%Y%m}"
+    cur.execute(
+        psycopg.sql.SQL(
+            "CREATE TABLE {} PARTITION OF price_minute FOR VALUES FROM (%s) TO (%s)"
+        ).format(psycopg.sql.Identifier(name)),
+        (month, nxt),
+    )
+    return name

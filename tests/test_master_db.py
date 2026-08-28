@@ -222,3 +222,47 @@ def test_이벤트가_둘이면_조정계수가_누적된다(cur):
     )
     # 두 이벤트 모두 이후에 있으므로 2 x 5 = 10
     assert cur.fetchone()[0] == Decimal("10.0000000000")
+
+
+def test_분봉_파티션을_만들고_라우팅한다(cur):
+    from datetime import UTC, datetime
+    from decimal import Decimal
+
+    from common.db.prices import (
+        create_minute_partition,
+        existing_minute_partitions,
+        upsert_price_minute,
+    )
+    from common.types import Candle
+
+    # 파티션이 없는 먼 미래 달을 고른다
+    month = datetime(2029, 3, 1, tzinfo=UTC)
+    assert "price_minute_202903" not in existing_minute_partitions(cur)
+
+    name = create_minute_partition(cur, month)
+    assert name == "price_minute_202903"
+    assert name in existing_minute_partitions(cur)
+
+    master.upsert_stocks(cur, [sample_stock()])
+    ts = datetime(2029, 3, 15, 1, 0, tzinfo=UTC)
+    upsert_price_minute(
+        cur,
+        [
+            Candle(
+                stock_id=TEST_STOCK_ID,
+                ts=ts,
+                open=Decimal(100),
+                high=Decimal(100),
+                low=Decimal(100),
+                close=Decimal(100),
+                volume=1,
+            )
+        ],
+    )
+
+    cur.execute(
+        "SELECT tableoid::regclass::text FROM price_minute"
+        " WHERE stock_id = %s AND ts = %s",
+        (TEST_STOCK_ID, ts),
+    )
+    assert cur.fetchone()[0] == name
