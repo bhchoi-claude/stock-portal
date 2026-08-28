@@ -5,8 +5,8 @@ from decimal import Decimal
 
 import pytest
 
-from collectors import indicator
 from collectors.base import Collector, CollectResult, IndicatorRecord
+from collectors.market.indicator_runner import process_name
 
 SINCE = datetime(2026, 8, 28, tzinfo=UTC)
 
@@ -46,7 +46,7 @@ class Spy:
 @pytest.fixture
 def runner(monkeypatch):
     """DB 를 쓰지 않고 실행기만 확인한다."""
-    from collectors.indicator import runner as mod
+    from collectors.market import indicator_runner as mod
 
     stored = []
     failures = {"count": 0}
@@ -123,4 +123,4 @@ def test_반복_실패하면_알린다(runner):
 
 
 def test_이름에_소스와_클래스가_들어간다():
-    assert indicator.runner.process_name(FakeCollector()) == "krx.FakeCollector"
+    assert process_name(FakeCollector()) == "krx.FakeCollector"

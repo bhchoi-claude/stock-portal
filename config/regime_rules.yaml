@@ -1,0 +1,82 @@
+# 시장국면 판정 규칙. 임계값을 코드에 쓰지 않는다 (CLAUDE.md 절대규칙 1)
+#
+# **임계값은 전부 임시값이다.** 맞을 리가 없고 데이터가 쌓이면 조정한다.
+# 바꿀 때 version 을 함께 올린다. market_regime.rule_version 으로
+# 변경 전후를 구분한다 (ROADMAP Phase 3 주의사항).
+#
+# 계층 이름은 indicator.layer 값과 같다. INTERFACES.md 8.1 예시는
+# fundamental / daily 두 계층이지만 그것은 형식 예시이고,
+# 실제로는 SCHEMA.md 의 네 계층을 쓴다. layer_scores 가 지표 정의와 맞는다.
+#
+# thresholds 는 danger 쪽과 safe 쪽 값이다. 둘 사이를 선형으로 -1 ~ +1 에
+# 대응시킨다. VKOSPI 처럼 값이 클수록 위험한 지표는 danger > safe 로 적는다.
+#
+# metric 은 value(기본) 또는 change_rate 다.
+# max_age_days 를 넘게 묵은 값은 없는 것으로 본다. 죽은 소스의 마지막 값이
+# 영원히 판정에 남는 것을 막는다.
+
+version: "2026-08-28"
+
+layers:
+  sentiment:
+    weight: 0.35
+    indicators:
+      - code: DEPOSIT
+        weight: 0.35
+        metric: change_rate
+        max_age_days: 5
+        thresholds: { danger: -0.02, safe: 0.02 }
+
+      - code: CREDIT_BALANCE
+        weight: 0.30
+        metric: change_rate
+        max_age_days: 5
+        # 신용잔고는 늘수록 위험하다. danger 가 safe 보다 크다
+        thresholds: { danger: 0.02, safe: -0.02 }
+
+      - code: FOREIGN_NET
+        weight: 0.35
+        max_age_days: 5
+        # 단위는 원. 순매수면 안전, 순매도면 위험
+        thresholds: { danger: -300000000000, safe: 300000000000 }
+
+  risk:
+    weight: 0.30
+    indicators:
+      - code: VKOSPI
+        weight: 0.60
+        max_age_days: 5
+        # 변동성은 높을수록 위험하다
+        thresholds: { danger: 25.0, safe: 15.0 }
+
+      - code: USDKRW
+        weight: 0.40
+        max_age_days: 5
+        # 원화 약세가 위험 신호다
+        thresholds: { danger: 1450.0, safe: 1300.0 }
+
+  position:
+    weight: 0.20
+    indicators:
+      - code: KOSPI_MA200_GAP
+        weight: 1.00
+        max_age_days: 5
+        # 이격도(%). 과열도 과랭도 위험하지만 초기에는 단순 선형으로 둔다
+        thresholds: { danger: -10.0, safe: 5.0 }
+
+  fundamental:
+    weight: 0.15
+    indicators:
+      - code: EXPORT_YOY
+        weight: 0.60
+        max_age_days: 60
+        thresholds: { danger: -5.0, safe: 5.0 }
+
+      - code: EXPORT_SEMI_YOY
+        weight: 0.40
+        max_age_days: 60
+        thresholds: { danger: -10.0, safe: 10.0 }
+
+output:
+  danger_below: -0.3
+  safe_above: 0.3
