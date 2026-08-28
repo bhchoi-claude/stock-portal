@@ -32,3 +32,17 @@ corporate_action:
   # 비율이 아니다. 적용하면 시계열이 오히려 더 틀어진다
   max_denominator: 4
   ratio_tolerance: 0.005
+
+price_minute:
+  # 관심종목 수. 최근 거래일 거래대금 상위에서 고른다.
+  # 키움 유량이 1 이라 1초에 한 종목씩이다. 200개면 약 3분 30초.
+  # 한도를 보며 늘린다
+  universe_size: 200
+
+  interval: 1m
+
+  # 한 종목당 받을 봉 수. 900봉이 약 2.3 거래일이라 하루 걸러도 따라잡는다
+  count: 900
+
+  # 실전 앱키가 없다. 시세 조회는 계좌와 무관하므로 모의로 받는다
+  use_paper: true

@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
+from typing import Any
 
 import psycopg
 
@@ -119,3 +120,44 @@ def apply_adj_factor(
         (ratio, stock_id, effective_date),
     )
     return cur.rowcount
+
+
+def top_by_value(cur: psycopg.Cursor, limit: int) -> list[str]:
+    """가장 최근 거래일의 거래대금 상위 종목.
+
+    단타 대상은 유동성이 있어야 한다. 별도의 관심종목 표를 두지 않고
+    시세에서 뽑는다. 폐지 종목은 최근 거래일에 없으므로 자연히 빠진다.
+    """
+    cur.execute(
+        """
+        SELECT stock_id FROM price_daily
+        WHERE trade_date = (SELECT MAX(trade_date) FROM price_daily)
+        ORDER BY value DESC NULLS LAST
+        LIMIT %s
+        """,
+        (limit,),
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def upsert_price_minute(cur: psycopg.Cursor, candles: Sequence[Any]) -> int:
+    """분봉을 삽입하거나 갱신한다.
+
+    분봉에는 조정계수가 없다 (SCHEMA.md 2장). 원주가를 그대로 담는다.
+    """
+    if not candles:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO price_minute (stock_id, ts, open, high, low, close, volume)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        ON CONFLICT (stock_id, ts) DO UPDATE SET
+            open   = EXCLUDED.open,
+            high   = EXCLUDED.high,
+            low    = EXCLUDED.low,
+            close  = EXCLUDED.close,
+            volume = EXCLUDED.volume
+        """,
+        [(c.stock_id, c.ts, c.open, c.high, c.low, c.close, c.volume) for c in candles],
+    )
+    return len(candles)
