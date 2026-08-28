@@ -64,7 +64,9 @@ class KiwoomBroker(Broker):
 
     name = "kiwoom"
 
-    def __init__(self, *, is_paper: bool, min_interval: float = 1.0) -> None:
+    def __init__(
+        self, *, is_paper: bool, min_interval: float = 1.0, max_attempts: int = 3
+    ) -> None:
         # 실전과 모의는 앱키가 별도다. 도메인과 키를 함께 골라야 한다
         suffix = "PAPER" if is_paper else "LIVE"
         self._domain = PAPER_DOMAIN if is_paper else LIVE_DOMAIN
@@ -74,6 +76,7 @@ class KiwoomBroker(Broker):
         self._token: str | None = None
         self._expires_at: datetime | None = None
         self._min_interval = min_interval
+        self._max_attempts = max_attempts
         self._last_call: dict[str, float] = {}
         self._lock = threading.Lock()
 
@@ -106,14 +109,17 @@ class KiwoomBroker(Broker):
     # ---- HTTP ----
 
     def _throttle(self, api_id: str) -> None:
-        """같은 api-id 는 최소 간격을 둔다. 유량이 1 이라 연속 호출은 429 다."""
+        """같은 api-id 는 최소 간격을 둔다. 유량이 1 이라 연속 호출은 429 다.
+
+        직전 호출이 **끝난** 시각부터 잰다. 시작 시각부터 재면 응답 시간만큼
+        간격이 줄어 429 가 난다 (2026-08-28 연속조회에서 겪었다).
+        """
         with self._lock:
             last = self._last_call.get(api_id)
             if last is not None:
                 wait = self._min_interval - (time.monotonic() - last)
                 if wait > 0:
                     time.sleep(wait)
-            self._last_call[api_id] = time.monotonic()
 
     def _request(
         self, path: str, headers: dict[str, str], body: dict[str, Any]
@@ -156,9 +162,33 @@ class KiwoomBroker(Broker):
     def _call(
         self, api_id: str, path: str, body: dict[str, Any], **extra: str
     ) -> dict[str, Any]:
-        self._throttle(api_id)
-        headers = {**self._auth_header(), "api-id": api_id, **extra}
-        return self._request(path, headers, body)
+        """조회 한 번. TransientError 만 지수 백오프로 다시 건다.
+
+        주문은 이 경로를 쓰지 않는다. 주문은 자동 재시도하지 않는다
+        (INTERFACES.md 2.1).
+        """
+        for attempt in range(1, self._max_attempts + 1):
+            self._throttle(api_id)
+            headers = {**self._auth_header(), "api-id": api_id, **extra}
+            try:
+                return self._request(path, headers, body)
+            except TransientError as exc:
+                if attempt == self._max_attempts:
+                    raise
+                delay = getattr(exc, "retry_after", 1.0) * attempt
+                logger.warning(
+                    "%s 재시도 %d/%d (%s), %.1f초 대기",
+                    api_id,
+                    attempt,
+                    self._max_attempts,
+                    exc,
+                    delay,
+                )
+                time.sleep(delay)
+            finally:
+                # 다음 호출은 이 호출이 끝난 시각부터 간격을 잰다
+                self._last_call[api_id] = time.monotonic()
+        raise AssertionError("도달할 수 없다")
 
     # ---- 조회 ----
 
