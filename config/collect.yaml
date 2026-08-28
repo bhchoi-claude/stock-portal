@@ -46,3 +46,10 @@ price_minute:
 
   # 실전 앱키가 없다. 시세 조회는 계좌와 무관하므로 모의로 받는다
   use_paper: true
+
+trading_flow:
+  # 분봉과 같은 관심종목 수를 쓴다. 한 번에 100 거래일이 오므로
+  # 매일 돌리면 과거분도 함께 메워진다
+  universe_size: 200
+
+  use_paper: true

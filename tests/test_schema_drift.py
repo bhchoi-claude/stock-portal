@@ -17,6 +17,7 @@ from common.db.models import (
     Stock,
     StockStatus,
 )
+from common.types import InvestorFlow
 
 # 실행 위치와 무관하게 읽는다
 DDL_PATH = (
@@ -24,7 +25,15 @@ DDL_PATH = (
 )
 DDL = DDL_PATH.read_text(encoding="utf-8")
 
-CONSTRAINT_KEYWORDS = ("PRIMARY", "FOREIGN", "UNIQUE", "CHECK", "CONSTRAINT")
+# 제약 정의를 컬럼과 가르는 접두어. 키워드만 보면 foreign_net 같은 컬럼을
+# FOREIGN KEY 로 오인한다. 뒤따르는 토큰까지 함께 본다
+CONSTRAINT_PREFIXES = (
+    "PRIMARY KEY",
+    "FOREIGN KEY",
+    "UNIQUE (",
+    "CHECK (",
+    "CONSTRAINT ",
+)
 
 
 def table_columns(table: str) -> list[str]:
@@ -35,7 +44,7 @@ def table_columns(table: str) -> list[str]:
     columns = []
     for raw in match.group(1).splitlines():
         line = raw.split("--")[0].strip()
-        if not line or line.upper().startswith(CONSTRAINT_KEYWORDS):
+        if not line or line.upper().startswith(CONSTRAINT_PREFIXES):
             continue
         columns.append(line.split()[0])
     return columns
@@ -49,6 +58,7 @@ CASES = [
     (StockStatus, "stock_status", set()),
     (PriceDaily, "price_daily", set()),
     (CorporateAction, "corporate_action", {"action_id", "created_at"}),
+    (InvestorFlow, "trading_flow", set()),
     (Account, "account", set()),
     (Source, "source", {"source_id", "last_success_at", "created_at"}),
 ]
@@ -64,3 +74,9 @@ def test_필드가_컬럼과_일치한다(model, table, omitted):
 def test_stock_columns_는_dataclass_필드_순서와_같다():
     # get_stock 이 Stock(*row) 로 만들기 때문에 순서가 어긋나면 값이 뒤섞인다
     assert STOCK_COLUMNS == tuple(f.name for f in fields(Stock))
+
+
+def test_제약과_이름이_겹치는_컬럼을_빠뜨리지_않는다():
+    # foreign_net 을 FOREIGN KEY 로 오인해 건너뛴 적이 있다
+    assert "foreign_net" in table_columns("trading_flow")
+    assert "FOREIGN KEY" not in table_columns("price_daily")

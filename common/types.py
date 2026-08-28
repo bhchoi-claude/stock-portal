@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from enum import Enum
 
@@ -62,3 +62,18 @@ class Balance:
     eval_amount: Decimal  # 평가금액
     total_asset: Decimal
     currency: str = "KRW"
+
+
+@dataclass(frozen=True)
+class InvestorFlow:
+    """투자자별 순매수 금액. 단위는 원이다.
+
+    출처가 주는 값은 백만원 단위라 어댑터가 원으로 바꾼다. 같은 금액 컬럼인
+    `price_daily.value` 가 원 단위이므로 맞춘다.
+    """
+
+    stock_id: str
+    trade_date: date
+    foreign_net: Decimal
+    institution_net: Decimal
+    individual_net: Decimal

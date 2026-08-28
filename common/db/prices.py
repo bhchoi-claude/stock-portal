@@ -161,3 +161,32 @@ def upsert_price_minute(cur: psycopg.Cursor, candles: Sequence[Any]) -> int:
         [(c.stock_id, c.ts, c.open, c.high, c.low, c.close, c.volume) for c in candles],
     )
     return len(candles)
+
+
+def upsert_trading_flow(cur: psycopg.Cursor, flows: Sequence[Any]) -> int:
+    """투자자별 순매수를 삽입하거나 갱신한다."""
+    if not flows:
+        return 0
+    cur.executemany(
+        """
+        INSERT INTO trading_flow (
+            stock_id, trade_date, foreign_net, institution_net, individual_net
+        )
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (stock_id, trade_date) DO UPDATE SET
+            foreign_net     = EXCLUDED.foreign_net,
+            institution_net = EXCLUDED.institution_net,
+            individual_net  = EXCLUDED.individual_net
+        """,
+        [
+            (
+                f.stock_id,
+                f.trade_date,
+                f.foreign_net,
+                f.institution_net,
+                f.individual_net,
+            )
+            for f in flows
+        ],
+    )
+    return len(flows)

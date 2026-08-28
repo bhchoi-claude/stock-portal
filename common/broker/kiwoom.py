@@ -9,13 +9,13 @@ import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
 from ..env import require_env
-from ..types import Balance, Candle, Position, Quote
+from ..types import Balance, Candle, InvestorFlow, Position, Quote
 from .base import Broker, OrderRequest, OrderResult
 from .errors import PermanentError, RateLimitError, TransientError
 
@@ -33,6 +33,10 @@ CHART_PATH = "/api/dostk/chart"
 INFO_PATH = "/api/dostk/stkinfo"
 MINUTE_API = "ka10080"
 QUOTE_API = "ka10001"
+FLOW_API = "ka10059"
+
+# ka10059 순매수 금액은 백만원 단위다 (2026-08-28 실측)
+FLOW_UNIT = 1_000_000
 
 TIMEOUT = 20.0
 
@@ -258,6 +262,38 @@ class KiwoomBroker(Broker):
             low=strip_sign(row["low_pric"]),
             close=strip_sign(row["cur_prc"]),
             volume=int(row["trde_qty"]),
+        )
+
+    def get_investor_flow(self, stock_id: str, end: date) -> list[InvestorFlow]:
+        """투자자별 순매수. Broker 규격 밖의 키움 전용 조회다.
+
+        한 번에 100 거래일이 온다. `end` 가 마지막 날이다.
+
+        **부호를 벗기면 안 된다.** 분봉 가격과 달리 여기서는 마이너스가
+        순매도라는 뜻이다. 같은 API 제공자라도 필드마다 의미가 다르다.
+        """
+        data = self._call(
+            FLOW_API,
+            INFO_PATH,
+            {
+                "dt": end.strftime("%Y%m%d"),
+                "stk_cd": self.to_code(stock_id),
+                "amt_qty_tp": "1",
+                "trde_tp": "0",
+                "unit_tp": "1",
+            },
+        )
+        rows = data.get("stk_invsr_orgn") or []
+        return [self._to_flow(stock_id, row) for row in rows]
+
+    @staticmethod
+    def _to_flow(stock_id: str, row: dict[str, str]) -> InvestorFlow:
+        return InvestorFlow(
+            stock_id=stock_id,
+            trade_date=date.fromisoformat(row["dt"]),
+            foreign_net=Decimal(row["frgnr_invsr"]) * FLOW_UNIT,
+            institution_net=Decimal(row["orgn"]) * FLOW_UNIT,
+            individual_net=Decimal(row["ind_invsr"]) * FLOW_UNIT,
         )
 
     def get_balance(self, account_id: str) -> Balance:
