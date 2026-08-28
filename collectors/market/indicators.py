@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 from common.broker.kiwoom import KiwoomBroker
 from common.config import load_config
 from common.db.conn import connect, transaction
+from common.db.prices import foreign_net_by_date, listed_stock_ids
 from common.notify.telegram import TelegramNotifier
 from common.types import IndexClose
 
@@ -97,6 +98,37 @@ class KospiMaGapCollector(Collector):
         )
 
 
+class ForeignNetCollector(Collector):
+    """시장 전체 외국인 순매수. `trading_flow` 를 거래일별로 합친다.
+
+    수집이 아니라 이미 받은 것을 집계하는 파생 지표다.
+    """
+
+    source_kind = "kiwoom"
+    source_identifier = "ka10059"
+    interval_sec = 86400
+
+    def __init__(self, min_coverage_ratio: float) -> None:
+        self._min_coverage_ratio = min_coverage_ratio
+
+    def collect(self, since: datetime) -> CollectResult:
+        start = since.date()
+        with connect() as conn, transaction(conn) as cur:
+            listed = len(listed_stock_ids(cur))
+            # 일부만 수집된 날은 뺀다. 합계가 시장 전체를 뜻하지 않게 된다
+            min_stocks = int(listed * self._min_coverage_ratio)
+            totals = foreign_net_by_date(cur, min_stocks)
+
+        return CollectResult(
+            success=True,
+            records=[
+                IndicatorRecord("FOREIGN_NET", day, total)
+                for day, total in totals
+                if day >= start
+            ],
+        )
+
+
 def daily_returns(closes: list[IndexClose]) -> dict[date, Decimal]:
     """전일 대비 등락률(%). 첫날은 이전 값이 없어 빠진다."""
     returns = {}
@@ -148,6 +180,7 @@ def main(argv: list[str]) -> int:
     collectors = [
         VkospiCollector(broker, params["vkospi_code"], end),
         KospiMaGapCollector(broker, params["kospi_code"], end, params["ma_window"]),
+        ForeignNetCollector(params["min_flow_coverage_ratio"]),
     ]
 
     try:

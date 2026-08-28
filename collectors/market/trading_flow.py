@@ -12,7 +12,7 @@ from common.broker.kiwoom import KiwoomBroker
 from common.config import load_config
 from common.db.conn import connect, transaction
 from common.db.events import log_event
-from common.db.prices import top_by_value, upsert_trading_flow
+from common.db.prices import listed_stock_ids, upsert_trading_flow
 
 logger = logging.getLogger(__name__)
 
@@ -29,9 +29,9 @@ def main(argv: list[str]) -> int:
     end = date.fromisoformat(argv[1]) if len(argv) > 1 else datetime.now(SEOUL).date()
 
     with connect() as conn, transaction(conn) as cur:
-        universe = top_by_value(cur, params["universe_size"])
+        universe = listed_stock_ids(cur)
     if not universe:
-        print("일봉이 없어 대상 종목을 고를 수 없습니다.")
+        print("상장 종목이 없습니다.")
         return 1
 
     # 한 번에 100 거래일이 오므로 매일 돌리면 과거분도 함께 메워진다
@@ -66,11 +66,20 @@ def main(argv: list[str]) -> int:
             detail={"universe": len(universe), "rows": stored, "failed": failed},
         )
 
+    # 전 종목을 돌면 거래정지·신규상장 등으로 몇 건은 늘 실패한다.
+    # 한 건에 실패로 끝내면 매일 알림이 울린다
+    ratio = len(failed) / len(universe)
+    too_many = ratio > params["max_failure_ratio"]
     if failed:
-        logger.warning("실패 %d종목: %s", len(failed), failed[:10])
+        logger.warning(
+            "실패 %d종목 (%.1f%%): %s", len(failed), ratio * 100, failed[:10]
+        )
 
-    print(f"{len(universe)}종목에서 {stored}행 적재, {len(failed)}종목 실패.")
-    return 1 if failed else 0
+    print(
+        f"{len(universe)}종목에서 {stored}행 적재,"
+        f" {len(failed)}종목 실패 ({ratio * 100:.1f}%)."
+    )
+    return 1 if too_many else 0
 
 
 if __name__ == "__main__":

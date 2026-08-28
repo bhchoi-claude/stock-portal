@@ -221,3 +221,43 @@ def create_minute_partition(cur: psycopg.Cursor, month: datetime) -> str:
         )
     )
     return name
+
+
+def listed_stock_ids(cur: psycopg.Cursor) -> list[str]:
+    """상장중인 종목 전체. 수급은 시장 전체를 받아야 지표가 시장을 대표한다."""
+    cur.execute(
+        "SELECT stock_id FROM stock WHERE delisted_at IS NULL ORDER BY stock_id"
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def foreign_net_by_date(
+    cur: psycopg.Cursor, min_stocks: int
+) -> list[tuple[date, Decimal]]:
+    """거래일별 외국인 순매수 합계.
+
+    종목 수가 `min_stocks` 에 못 미치는 날은 뺀다. 일부만 수집된 날을 합치면
+    시장 전체 수급이 아니라 '그날 받은 것들의 합' 이 된다. 그 값이 지표로
+    들어가면 다른 날과 비교할 수 없다.
+    """
+    cur.execute(
+        """
+        SELECT trade_date, SUM(foreign_net)
+        FROM trading_flow
+        WHERE foreign_net IS NOT NULL
+        GROUP BY trade_date
+        HAVING COUNT(*) >= %s
+        ORDER BY trade_date
+        """,
+        (min_stocks,),
+    )
+    return [(row[0], row[1]) for row in cur.fetchall()]
+
+
+def flow_coverage(cur: psycopg.Cursor) -> list[tuple[date, int]]:
+    """거래일별 수급 수집 종목 수. 커버리지 확인용."""
+    cur.execute(
+        "SELECT trade_date, COUNT(*) FROM trading_flow"
+        " GROUP BY trade_date ORDER BY trade_date"
+    )
+    return [(row[0], row[1]) for row in cur.fetchall()]

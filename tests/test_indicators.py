@@ -117,3 +117,60 @@ def test_종가가_0_이면_등락률을_만들지_않는다():
     bars = closes([0, 110])
 
     assert daily_returns(bars) == {}
+
+
+def test_커버리지가_모자란_날은_집계에서_뺀다(monkeypatch):
+    # 일부만 수집된 날의 합은 '시장 전체' 가 아니라 '받은 것들의 합' 이다
+    from collectors.market import indicators as mod
+    from collectors.market.indicators import ForeignNetCollector
+
+    seen = {}
+
+    class FakeCtx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(mod, "connect", lambda: FakeCtx())
+    monkeypatch.setattr(mod, "transaction", lambda conn: FakeCtx())
+    monkeypatch.setattr(mod, "listed_stock_ids", lambda cur: ["x"] * 2850)
+    monkeypatch.setattr(
+        mod,
+        "foreign_net_by_date",
+        lambda cur, min_stocks: seen.update(min_stocks=min_stocks) or [],
+    )
+
+    ForeignNetCollector(0.9).collect(datetime(2026, 1, 1, tzinfo=UTC))
+
+    assert seen["min_stocks"] == 2565
+
+
+def test_since_이전_수급은_지표로_만들지_않는다(monkeypatch):
+    from collectors.market import indicators as mod
+    from collectors.market.indicators import ForeignNetCollector
+
+    class FakeCtx:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    monkeypatch.setattr(mod, "connect", lambda: FakeCtx())
+    monkeypatch.setattr(mod, "transaction", lambda conn: FakeCtx())
+    monkeypatch.setattr(mod, "listed_stock_ids", lambda cur: ["x"] * 10)
+    monkeypatch.setattr(
+        mod,
+        "foreign_net_by_date",
+        lambda cur, min_stocks: [
+            (date(2026, 1, 1), Decimal(100)),
+            (date(2026, 1, 5), Decimal(200)),
+        ],
+    )
+
+    result = ForeignNetCollector(0.9).collect(datetime(2026, 1, 5, tzinfo=UTC))
+
+    assert [r.period_date for r in result.records] == [date(2026, 1, 5)]
+    assert result.records[0].indicator_code == "FOREIGN_NET"
