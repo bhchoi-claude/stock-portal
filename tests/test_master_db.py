@@ -275,9 +275,9 @@ def test_지표값을_넣고_변화율을_계산한다(cur):
     from common.db.indicators import recompute_change_rate, upsert_indicator_values
 
     rows = [
-        IndicatorRecord("VKOSPI", date(2026, 8, 26), Decimal("10")),
-        IndicatorRecord("VKOSPI", date(2026, 8, 27), Decimal("12")),
-        IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal("9")),
+        IndicatorRecord("VKOSPI", date(2026, 8, 26), Decimal(10)),
+        IndicatorRecord("VKOSPI", date(2026, 8, 27), Decimal(12)),
+        IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal(9)),
     ]
     upsert_indicator_values(cur, rows)
     recompute_change_rate(cur, "VKOSPI")
@@ -301,10 +301,10 @@ def test_지표값을_다시_넣으면_덮어쓴다(cur):
     from common.db.indicators import upsert_indicator_values
 
     upsert_indicator_values(
-        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal("9"))]
+        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal(9))]
     )
     upsert_indicator_values(
-        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal("11"))]
+        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal(11))]
     )
 
     cur.execute(
