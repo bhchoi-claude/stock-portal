@@ -266,3 +266,67 @@ def test_분봉_파티션을_만들고_라우팅한다(cur):
         (TEST_STOCK_ID, ts),
     )
     assert cur.fetchone()[0] == name
+
+
+def test_지표값을_넣고_변화율을_계산한다(cur):
+    from decimal import Decimal
+
+    from collectors.base import IndicatorRecord
+    from common.db.indicators import recompute_change_rate, upsert_indicator_values
+
+    rows = [
+        IndicatorRecord("VKOSPI", date(2026, 8, 26), Decimal("10")),
+        IndicatorRecord("VKOSPI", date(2026, 8, 27), Decimal("12")),
+        IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal("9")),
+    ]
+    upsert_indicator_values(cur, rows)
+    recompute_change_rate(cur, "VKOSPI")
+
+    cur.execute(
+        "SELECT period_date, value, change_rate FROM indicator_value"
+        " WHERE indicator_code = 'VKOSPI' ORDER BY period_date"
+    )
+    got = cur.fetchall()
+
+    # 첫 행은 이전 값이 없어 NULL, 이후는 (현재-이전)/|이전|
+    assert got[0][2] is None
+    assert got[1][2] == Decimal("0.2000")
+    assert got[2][2] == Decimal("-0.2500")
+
+
+def test_지표값을_다시_넣으면_덮어쓴다(cur):
+    from decimal import Decimal
+
+    from collectors.base import IndicatorRecord
+    from common.db.indicators import upsert_indicator_values
+
+    upsert_indicator_values(
+        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal("9"))]
+    )
+    upsert_indicator_values(
+        cur, [IndicatorRecord("VKOSPI", date(2026, 8, 28), Decimal("11"))]
+    )
+
+    cur.execute(
+        "SELECT COUNT(*), MAX(value) FROM indicator_value"
+        " WHERE indicator_code = 'VKOSPI' AND period_date = %s",
+        (date(2026, 8, 28),),
+    )
+    assert cur.fetchone() == (1, Decimal("11.000000"))
+
+
+def test_판정에_쓰는_지표만_고른다(cur):
+    from common.db.indicators import active_indicators
+
+    cur.execute(
+        "UPDATE indicator SET use_in_regime = FALSE WHERE indicator_code = 'VKOSPI'"
+    )
+
+    assert "VKOSPI" in active_indicators(cur)
+    assert "VKOSPI" not in active_indicators(cur, regime_only=True)
+
+
+def test_등록되지_않은_소스는_건드리지_않는다(cur):
+    from common.db.indicators import touch_source
+
+    assert touch_source(cur, "krx", "없는소스") == 0
