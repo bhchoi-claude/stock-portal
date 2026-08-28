@@ -13,7 +13,14 @@ from common.db.events import log_event
 from common.notify.base import Notifier
 from common.notify.telegram import TelegramNotifier
 
-from . import delisted_refine, holidays, price_daily, stock_status
+from . import (
+    adj_factor,
+    corporate_action,
+    delisted_refine,
+    holidays,
+    price_daily,
+    stock_status,
+)
 from .krx import fetch
 from .price_daily_backfill import missing_dates
 
@@ -99,14 +106,34 @@ def main(argv: list[str], notifier: Notifier | None = None) -> int:
         elif result == "failed":
             failed.append(day)
 
-    # 새 거래일이 들어온 뒤라야 폐지일과 휴장일을 다시 셀 수 있다
+    # 새 거래일이 들어온 뒤라야 폐지일·휴장일·조정 이벤트를 다시 셀 수 있다.
+    # 조정 이벤트는 직전 거래일과 비교해야 하므로 그날부터 훑는다
     if loaded:
-        for name, entry in (
-            ("폐지일 정밀화", delisted_refine.main),
-            ("휴장일 역산", holidays.main),
-        ):
+        with connect() as conn, transaction(conn) as cur:
+            cur.execute(
+                "SELECT MAX(trade_date) FROM price_daily WHERE trade_date < %s",
+                (min(loaded),),
+            )
+            baseline = cur.fetchone()[0]
+
+        steps = [
+            ("폐지일 정밀화", delisted_refine.main, ["폐지일 정밀화"]),
+            ("휴장일 역산", holidays.main, ["휴장일 역산"]),
+        ]
+        if baseline is not None:
+            steps.append(
+                (
+                    "조정 이벤트",
+                    corporate_action.main,
+                    ["조정 이벤트", str(baseline), str(max(loaded))],
+                )
+            )
+        # 조정계수는 이벤트를 갱신한 뒤에 다시 계산한다
+        steps.append(("조정계수", adj_factor.main, ["조정계수"]))
+
+        for name, entry, args in steps:
             try:
-                entry([name])
+                entry(args)
             except Exception:
                 logger.exception("%s 예외", name)
                 failed.append(today)
