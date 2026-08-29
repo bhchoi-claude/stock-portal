@@ -1,0 +1,38 @@
+{# 시장분석. 지표 현황과 국면 판정 이력 #}
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}시장분석 · 증권 포털{% endblock %}
+
+{% block body %}
+<section>
+  <h2>지표</h2>
+  {{ m.indicator_table(indicators) }}
+</section>
+
+<section>
+  <h2>국면 판정 이력</h2>
+  <p class="dim">{{ history["from"] }} ~ {{ history.to }}</p>
+  <div class="scroll">
+    <table>
+      <thead>
+        <tr><th>거래일</th><th>국면</th><th class="right">점수</th>
+            <th class="right">KOSPI</th><th class="right">KOSDAQ</th><th>규칙</th></tr>
+      </thead>
+      <tbody>
+        {% for r in history.rows %}
+        <tr>
+          <td>{{ r.trade_date }}</td>
+          <td>{{ m.regime_badge(r.regime) }}{{ ' 수동' if r.is_override else '' }}</td>
+          <td class="right">{{ r.score | num }}</td>
+          <td class="right">{{ r.kospi_return | pct }}</td>
+          <td class="right">{{ r.kosdaq_return | pct }}</td>
+          <td class="dim">{{ r.rule_version }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="dim">판정 기록이 없다.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

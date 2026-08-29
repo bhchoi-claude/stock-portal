@@ -1,0 +1,92 @@
+{# 화면 여럿이 쓰는 조각. 프로세스 상태와 지표 표 #}
+
+{% macro process_table(processes) %}
+<div class="scroll">
+  <table>
+    <thead>
+      <tr><th>프로세스</th><th>상태</th><th>마지막 신호</th></tr>
+    </thead>
+    <tbody>
+      {% for p in processes %}
+      <tr>
+        {# 비고를 열로 두면 휴대폰 폭에서 잘린다. 이름 아래에 붙인다 #}
+        <td>{{ p.label }}
+          {%- set note = process_note(p) | trim -%}
+          {%- if note %}<div class="dim wrap">{{ note }}</div>{% endif -%}
+        </td>
+        <td><span class="tag {{ p.state }}">{{ state_text(p.state) }}</span></td>
+        <td>{{ p.last_beat_at | kst }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro process_note(p) %}
+{%- if p.state == 'unknown' -%}아직 실행된 적 없음
+{%- elif p.state == 'stale' -%}{{ p.stale_after_hours }}시간 넘게 소식 없음
+{%- elif p.state == 'error' and p.detail -%}
+  {%- if p.detail.error -%}{{ p.detail.error }}
+  {%- elif p.detail.exit_code is defined -%}종료코드 {{ p.detail.exit_code }}
+  {%- else -%}{{ p.detail | tojson }}{%- endif -%}
+{%- endif -%}
+{% endmacro %}
+
+{% macro state_text(state) %}
+{%- if state == 'ok' -%}정상
+{%- elif state == 'error' -%}실패
+{%- elif state == 'stale' -%}멈춤
+{%- else -%}미기동
+{%- endif -%}
+{% endmacro %}
+
+{% macro indicator_table(indicators) %}
+<div class="scroll">
+  <table>
+    {# 휴대폰 폭에서 값이 먼저 보여야 한다. 계층·기준일은 밀려도 된다 #}
+    <thead>
+      <tr><th>지표</th><th class="right">값</th><th class="right">전기 대비</th>
+          <th>계층</th><th>기준일</th></tr>
+    </thead>
+    <tbody>
+      {% for i in indicators %}
+      <tr>
+        <td>{{ i.name }}<span class="dim"> {{ i.unit or '' }}</span></td>
+        <td class="right">{{ i.value | num }}</td>
+        <td class="right">{{ i.change_rate | pct }}</td>
+        <td class="dim">{{ i.layer }}{{ '' if i.use_in_regime else ' (판정 제외)' }}</td>
+        <td class="dim">{{ i.period_date or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro event_list(events) %}
+{# 표로 두면 메시지가 잘린다. 한 건을 두 줄로 쓴다 #}
+<ul class="events">
+  {% for e in events %}
+  <li>
+    <div class="meta">
+      <span class="tag {{ 'error' if e.level in ('ERROR', 'CRITICAL') }}">{{ e.level }}</span>
+      {{ e.created_at | kst }} · {{ e.process_name }}{{ ' · ' ~ e.category if e.category }}
+    </div>
+    <div>{{ e.message }}</div>
+    {% if e.detail %}<div class="dim">{{ e.detail | tojson }}</div>{% endif %}
+  </li>
+  {% else %}
+  <li class="dim">기록된 에러가 없다.</li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro regime_badge(regime) %}
+<span class="tag regime-{{ regime }}">
+  {%- if regime == 'danger' -%}위험
+  {%- elif regime == 'safe' -%}안전
+  {%- else -%}중립
+  {%- endif -%}
+</span>
+{% endmacro %}

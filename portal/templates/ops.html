@@ -1,0 +1,16 @@
+{# 운영·로그 (기초). 프로세스 상태와 최근 에러 #}
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}운영·로그 · 증권 포털{% endblock %}
+
+{% block body %}
+<section>
+  <h2>프로세스</h2>
+  {{ m.process_table(processes) }}
+</section>
+
+<section>
+  <h2>최근 에러</h2>
+  {{ m.event_list(events) }}
+</section>
+{% endblock %}

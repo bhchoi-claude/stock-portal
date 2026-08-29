@@ -1,0 +1,39 @@
+{# 대시보드. 매매 항목은 엔진이 붙는 Phase 8 까지 비어 있다 #}
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}대시보드 · 증권 포털{% endblock %}
+
+{% block body %}
+<section>
+  <h2>시장국면</h2>
+  {% if data.regime %}
+  <p class="lead">
+    {{ m.regime_badge(data.regime.regime) }}
+    <span class="score">{{ data.regime.score | num }}</span>
+    <span class="dim">{{ data.regime.trade_date }} · 규칙 {{ data.regime.rule_version }}</span>
+  </p>
+  {% if data.regime.is_override %}
+  <p class="warn">수동 지정 상태다. 사유: {{ data.regime.override_reason or '없음' }}</p>
+  {% endif %}
+  {% else %}
+  <p class="dim">판정 기록이 없다.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>지표</h2>
+  {{ m.indicator_table(data.indicators) }}
+</section>
+
+<section>
+  <h2>프로세스</h2>
+  {{ m.process_table(data.processes) }}
+</section>
+
+<section>
+  <h2>매매</h2>
+  <p class="dim">
+    매매 엔진은 아직 없다. 이 자리에 계좌·보유종목·오늘 체결이 들어간다 (Phase 8).
+  </p>
+</section>
+{% endblock %}

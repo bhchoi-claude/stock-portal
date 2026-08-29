@@ -1,0 +1,96 @@
+/* 휴대폰에서 먼저 읽히도록 만든다. 넓은 화면은 폭만 제한한다 */
+
+:root {
+  --bg: #14161a;
+  --panel: #1c1f25;
+  --line: #2b3038;
+  --text: #e6e8ea;
+  --dim: #8b929c;
+  --ok: #3fa66a;
+  --warn: #c9a227;
+  --bad: #c8503f;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+header {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+nav { display: flex; }
+
+nav a {
+  flex: 1;
+  padding: 14px 8px;
+  text-align: center;
+  color: var(--dim);
+  text-decoration: none;
+}
+
+nav a.on {
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--text);
+}
+
+main { max-width: 900px; margin: 0 auto; padding: 8px 12px 40px; }
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+}
+
+h2 { font-size: 15px; margin: 0 0 10px; }
+
+.lead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0; }
+.score { font-size: 26px; font-variant-numeric: tabular-nums; }
+.dim { color: var(--dim); font-size: 13px; }
+.warn { color: var(--warn); }
+
+/* 표는 화면 밖으로 밀지 않고 표 안에서만 가로로 넘긴다 */
+.scroll { overflow-x: auto; }
+
+table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+th, td { padding: 7px 10px; border-bottom: 1px solid var(--line); text-align: left; }
+th { color: var(--dim); font-weight: normal; font-size: 13px; }
+td { font-variant-numeric: tabular-nums; }
+.right { text-align: right; }
+
+/* 표 안에서도 줄바꿈이 필요한 칸이 있다 */
+.wrap { white-space: normal; }
+
+.events { list-style: none; margin: 0; padding: 0; }
+.events li { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.events li:last-child { border-bottom: none; }
+.events .meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  border: 1px solid var(--line);
+}
+
+.tag.ok, .tag.regime-safe { color: var(--ok); border-color: var(--ok); }
+.tag.stale, .tag.unknown, .tag.regime-neutral { color: var(--dim); }
+.tag.error, .tag.regime-danger { color: var(--bad); border-color: var(--bad); }

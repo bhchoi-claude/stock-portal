@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 from typing import Any
@@ -106,3 +107,44 @@ def _stringify(values: dict[str, Any]) -> dict[str, str]:
     보이는 그대로 남긴다.
     """
     return {k: str(v) for k, v in values.items()}
+
+
+@dataclass(frozen=True)
+class RegimeRow:
+    """market_regime 한 행. 화면과 API 가 함께 쓴다."""
+
+    trade_date: date
+    regime: str
+    score: Decimal
+    layer_scores: dict[str, Any] | None
+    indicators: dict[str, Any] | None
+    rule_version: str
+    is_override: bool
+    override_reason: str | None
+    kospi_return: Decimal | None
+    kosdaq_return: Decimal | None
+
+
+_COLUMNS = (
+    "trade_date, regime, score, layer_scores, indicators, rule_version,"
+    " is_override, override_reason, kospi_return, kosdaq_return"
+)
+
+
+def current_regime(cur: psycopg.Cursor) -> RegimeRow | None:
+    """가장 최근 판정. 아직 한 번도 판정하지 않았으면 None."""
+    cur.execute(
+        f"SELECT {_COLUMNS} FROM market_regime ORDER BY trade_date DESC LIMIT 1"
+    )
+    row = cur.fetchone()
+    return RegimeRow(*row) if row else None
+
+
+def regime_history(cur: psycopg.Cursor, start: date, end: date) -> list[RegimeRow]:
+    """구간 판정 이력. 최근이 앞이다."""
+    cur.execute(
+        f"SELECT {_COLUMNS} FROM market_regime"
+        " WHERE trade_date BETWEEN %s AND %s ORDER BY trade_date DESC",
+        (start, end),
+    )
+    return [RegimeRow(*row) for row in cur.fetchall()]

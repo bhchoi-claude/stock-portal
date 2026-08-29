@@ -1,0 +1,25 @@
+{# 모든 화면이 쓰는 뼈대. 탭 이동과 공통 스타일 #}
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}증권 포털{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="{{ url_for('views.dashboard') }}"
+         class="{{ 'on' if active == 'dashboard' }}">대시보드</a>
+      <a href="{{ url_for('views.market') }}"
+         class="{{ 'on' if active == 'market' }}">시장분석</a>
+      <a href="{{ url_for('views.ops') }}"
+         class="{{ 'on' if active == 'ops' }}">운영·로그</a>
+    </nav>
+  </header>
+  <main>
+    {% block body %}{% endblock %}
+  </main>
+</body>
+</html>

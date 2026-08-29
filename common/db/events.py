@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal
 
 import psycopg
@@ -34,3 +37,33 @@ def log_event(
         (process_name, level, category, message, Jsonb(detail) if detail else None),
     )
     return cur.fetchone()[0]
+
+
+@dataclass(frozen=True)
+class EventRow:
+    """event_log 한 행."""
+
+    event_id: int
+    process_name: str
+    level: str
+    category: str | None
+    message: str
+    detail: dict[str, Any] | None
+    created_at: datetime
+
+
+def recent_events(
+    cur: psycopg.Cursor, *, levels: Sequence[str] | None = None, limit: int
+) -> list[EventRow]:
+    """최근 이벤트. levels 를 주면 그 등급만 본다."""
+    cur.execute(
+        """
+        SELECT event_id, process_name, level, category, message, detail, created_at
+        FROM event_log
+        WHERE %s::text[] IS NULL OR level = ANY(%s)
+        ORDER BY created_at DESC, event_id DESC
+        LIMIT %s
+        """,
+        (list(levels) if levels else None, list(levels) if levels else None, limit),
+    )
+    return [EventRow(*row) for row in cur.fetchall()]

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import psycopg
@@ -87,3 +90,41 @@ def recent_failures(cur: psycopg.Cursor, process_name: str, within_hours: int) -
         (process_name, within_hours),
     )
     return cur.fetchone()[0]
+
+
+@dataclass(frozen=True)
+class IndicatorSnapshot:
+    """지표 정의와 최신값. 값이 아직 없으면 뒤쪽이 None 이다."""
+
+    indicator_code: str
+    name: str
+    layer: str
+    frequency: str
+    unit: str | None
+    use_in_regime: bool
+    period_date: date | None
+    value: Decimal | None
+    change_rate: Decimal | None
+
+
+def indicator_snapshot(cur: psycopg.Cursor) -> list[IndicatorSnapshot]:
+    """활성 지표 전부와 각각의 최신값.
+
+    한 번도 수집되지 않은 지표도 행으로 남긴다. 화면에서 '값 없음' 과
+    '지표가 없음' 은 다른 이야기다.
+    """
+    cur.execute(
+        """
+        SELECT i.indicator_code, i.name, i.layer, i.frequency, i.unit,
+               i.use_in_regime, v.period_date, v.value, v.change_rate
+        FROM indicator i
+        LEFT JOIN LATERAL (
+            SELECT period_date, value, change_rate FROM indicator_value
+            WHERE indicator_code = i.indicator_code
+            ORDER BY period_date DESC LIMIT 1
+        ) v ON TRUE
+        WHERE i.is_active
+        ORDER BY i.layer, i.indicator_code
+        """
+    )
+    return [IndicatorSnapshot(*row) for row in cur.fetchall()]

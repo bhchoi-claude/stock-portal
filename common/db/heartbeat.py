@@ -27,6 +27,8 @@ class ProcessState:
     last_beat_at: datetime
     started_at: datetime | None
     detail: dict[str, Any] | None
+    # 마지막 신호로부터 흐른 시간. 프로세스마다 다른 임계값과 비교한다
+    age_seconds: float
 
 
 def upsert_heartbeat(
@@ -66,7 +68,8 @@ def upsert_heartbeat(
 def list_heartbeats(cur: psycopg.Cursor) -> list[ProcessState]:
     """기록된 모든 프로세스의 마지막 상태."""
     cur.execute(
-        "SELECT process_name, status, last_beat_at, started_at, detail"
+        "SELECT process_name, status, last_beat_at, started_at, detail,"
+        " EXTRACT(EPOCH FROM clock_timestamp() - last_beat_at)::float8"
         " FROM heartbeat ORDER BY process_name"
     )
     return [ProcessState(*row) for row in cur.fetchall()]
