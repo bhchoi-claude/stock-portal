@@ -43,17 +43,20 @@
 
 ### 작업
 
-- [ ] bh-server 24시간 운영 설정
-  - 덮개 닫힘 무시, 절전 비활성
-  - **배터리 충전 임계값 60~80% 제한**
-  - 커널 자동 재부팅 비활성
-  - 공유기 DHCP 예약, BIOS 전원복구 자동부팅
-- [ ] PostgreSQL 설치, `portal_db` 생성
-- [ ] 프로젝트 구조 생성, git 초기화, `.gitignore`
-- [ ] `SCHEMA.md` 기준 마이그레이션 작성 및 적용
-- [ ] 기준 데이터 적재: `exchange`, `exchange_holiday`, `stock`, `account`, `indicator`
-- [ ] `common/db/` 모델 계층
-- [ ] `common/notify/` 텔레그램 알림
+- [x] bh-server 24시간 운영 설정 (2026-08-29 확인)
+  - [x] 덮개 닫힘 무시, 절전 비활성 — `HandleLidSwitch*=ignore`,
+        `sleep`/`suspend`/`hibernate` 타겟 masked
+  - [x] **배터리 충전 임계값 60~80% 제한** — LG 전용 경로에 80.
+        `/sys/devices/platform/lg-laptop/battery_care_limit`.
+        배터리는 `BAT0` 이 아니라 `CMB0` 이라 일반 경로에는 없다
+  - [x] 커널 자동 재부팅 비활성 — `99-no-auto-reboot`
+  - [ ] 공유기 DHCP 예약, BIOS 전원복구 자동부팅 — 서버 밖이라 확인 못 했다
+- [x] PostgreSQL 설치, `portal_db` 생성 — PostgreSQL 18.6
+- [x] 프로젝트 구조 생성, git 초기화, `.gitignore`
+- [x] `SCHEMA.md` 기준 마이그레이션 작성 및 적용
+- [x] 기준 데이터 적재: `exchange`, `exchange_holiday`, `stock`, `account`, `indicator`
+- [x] `common/db/` 모델 계층
+- [x] `common/notify/` 텔레그램 알림
 
 **완료 기준**
 - 전 상장종목이 `stock` 테이블에 적재됨
@@ -81,21 +84,37 @@
 > | 과거 일봉, 휴장일 | KRX 오픈API (하루치 전 종목 1회, 회당 1.2초) |
 > | 분봉, 실시간 시세, 잔고·주문 | 키움 |
 
-- [ ] 일봉 수집기 (KRX) — 전 종목, 과거분 일괄 + 일 1회 갱신
-- [ ] `exchange_holiday` — 일봉의 거래일에서 역산 (Phase 1 에서 이관)
+- [x] 일봉 수집기 (KRX) — 전 종목, 과거분 일괄 + 일 1회 갱신 (2026-08-29 확인)
+  - 2023-08-29 ~ 2026-08-28, 3,083종목 2,054,367행
+- [x] `exchange_holiday` — 일봉의 거래일에서 역산 (Phase 1 에서 이관) — 55건
 - [ ] `KiwoomBroker` 구현 (`INTERFACES.md` 2장)
-  - 조회: `get_quote`, `get_candles`, `get_balance`, `get_positions`
+  - [x] `get_quote`, `get_candles` — 여기에 `get_investor_flow`,
+        `get_index_closes` 가 더해졌다 (수급·지수 수집에 필요했다)
+  - [ ] `get_balance`, `get_positions` — `NotImplementedError` 인 채로 있다.
+        잔고·보유종목은 매매가 붙는 단계에서 쓴다
   - 주문 관련은 이 단계에서 구현하지 않음
-  - 에러 분류, 호출 한도 대응
-- [ ] 분봉 수집기 (키움) — 관심종목 우선, 점진 확대
-- [ ] `trading_flow` 수집 (외국인 순매수)
+  - [x] 에러 분류, 호출 한도 대응 — `broker/errors.py`, `_throttle`
+- [x] 분봉 수집기 (키움) — 관심종목 우선, 점진 확대 (2026-08-29 확인)
+  - 200종목 180,000행. 08-27·08-28 은 각 76,000행대로 온전하다
+  - **자동 적재는 아직 확인 못 했다.** 타이머가 08-29 에 등록돼 첫 발화가
+    08-31 16:10 이다. 지금까지 쌓인 것은 손으로 돌린 결과다
+- [x] `trading_flow` 수집 (외국인 순매수) (2026-08-29 확인) — 2,849종목 283,137행
 - [ ] 종목 상태 갱신 (관리종목·거래정지 등, 일 1회)
-  - `stock` 현재값 갱신 + `stock_status` 변경 이력 기록
-  - 상장·폐지 감지 (`listed_at`, `delisted_at`). **행을 삭제하지 않는다**
+  - [x] `stock` 현재값 갱신 + `stock_status` 변경 이력 기록 — 2,849행 적재
+  - [x] 상장·폐지 감지 (`listed_at`, `delisted_at`). **행을 삭제하지 않는다**
+        — 3,083종목 중 폐지 234건
+  - [ ] `is_managed` / `is_suspended` 가 전 종목 FALSE 다. KRX 종목기본정보에
+        해당 항목이 없어 채울 출처를 아직 못 찾았다. 관리종목·거래정지 변경은
+        지금 구조로는 감지되지 않는다
+  - 변경 이력은 아직 0건이다 (종목당 1행). 구조는 있으나 실제 변경으로
+    검증된 적은 없다
 - [x] `corporate_action` 수집 (2026-08-29) — 411건 조정 대상 (분할·병합·무상증자)
-  - 출처 확인 필요: 키움 API / DART 공시 / KRX
-- [ ] `price_daily.adj_factor` 계산 배치
-  - 이벤트 추가 시 해당 종목만 재계산
+  - 출처는 정해졌다. KRX 상장주식수 변화로 감지하고 DART 로 종류를 가린다.
+    DART 에 근거가 없으면 비율의 모양으로 판정하고 `source` 에 남긴다
+- [x] `price_daily.adj_factor` 계산 배치 (2026-08-29 확인)
+  - `daily.py` 가 조정 이벤트를 갱신한 뒤 매일 호출한다. 204,914행에 반영됨
+  - 종목별 증분이 아니라 **대상 종목 전체를 되돌리고 다시 쌓는다.**
+    증분으로 곱하면 두 번 돌 때마다 값이 커지기 때문이다
 - [ ] Nginx + systemd 기본 설정 (Phase 1 에서 이관)
   - [x] 수집기를 systemd 서비스로 등록 (2026-08-29)
   - [x] 재부팅 후 자동 기동 확인 (2026-08-29)
