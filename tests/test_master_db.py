@@ -6,9 +6,17 @@ from decimal import Decimal
 
 import pytest
 
-from common.db import master
+from common.db import master, prices
 from common.db.events import log_event
-from common.db.models import Account, Holiday, Source, Stock, StockStatus, make_stock_id
+from common.db.models import (
+    Account,
+    Holiday,
+    PriceDaily,
+    Source,
+    Stock,
+    StockStatus,
+    make_stock_id,
+)
 from common.types import StockState
 
 TEST_CODE = "999990"
@@ -458,3 +466,80 @@ def test_모르는_metric_은_거부한다(cur):
 
     with pytest.raises(ValueError):
         value_as_of(cur, "TEST_IND", "value; DROP TABLE stock", date(2026, 8, 28))
+
+
+def make_adj_target(cur, stock_id: str, rows: list[tuple[date, int, int]]) -> None:
+    """조정 대상 종목과 일봉을 만든다. rows 는 (거래일, 종가, 거래량) 이다."""
+    cur.execute(
+        "INSERT INTO corporate_action"
+        " (stock_id, effective_date, action_type, ratio, adjusts_price, source)"
+        " VALUES (%s, %s, 'merge', 0.5, TRUE, 'krx')",
+        (stock_id, date(2020, 1, 2)),
+    )
+    for trade_date, close, volume in rows:
+        master_price = PriceDaily(
+            stock_id=stock_id,
+            trade_date=trade_date,
+            open=Decimal(close),
+            high=Decimal(close),
+            low=Decimal(close),
+            close=Decimal(close),
+            volume=volume,
+        )
+        prices.upsert_price_daily(cur, [master_price])
+
+
+BAND_LOW = Decimal("0.65")
+BAND_HIGH = Decimal("1.45")
+
+
+def test_거래정지_반복종가는_불연속으로_세지_않는다(cur):
+    # KRX 는 정지 기간에 마지막 종가를 그대로 반복한다. 체결된 값이 아니다
+    master.upsert_stocks(cur, [sample_stock()])
+    make_adj_target(
+        cur,
+        TEST_STOCK_ID,
+        [
+            (date(2026, 3, 2), 10000, 100),
+            (date(2026, 3, 3), 10000, 0),
+            (date(2026, 3, 4), 10000, 0),
+            (date(2026, 3, 5), 2000, 100),
+        ],
+    )
+
+    rows = prices.adj_discontinuities(cur, BAND_LOW, BAND_HIGH, 20)
+    mine = [r for r in rows if r[0] == TEST_STOCK_ID]
+
+    # 정지 구간이 있었다는 사실은 남긴다. 연속 거래일로 세면 안 된다
+    assert len(mine) == 1
+    assert mine[0][1] == date(2026, 3, 2)
+    assert mine[0][4] == 2
+
+
+def test_정리매매_구간은_세지_않는다(cur):
+    # 정리매매에는 가격제한폭이 없다. 하루 -80% 가 정상이다
+    master.upsert_stocks(cur, [sample_stock(delisted_at=date(2026, 3, 20))])
+    make_adj_target(
+        cur,
+        TEST_STOCK_ID,
+        [(date(2026, 3, 10), 1000, 100), (date(2026, 3, 11), 200, 100)],
+    )
+
+    rows = prices.adj_discontinuities(cur, BAND_LOW, BAND_HIGH, 20)
+
+    assert [r for r in rows if r[0] == TEST_STOCK_ID] == []
+
+
+def test_연속_거래일의_급변은_결함으로_센다(cur):
+    master.upsert_stocks(cur, [sample_stock()])
+    make_adj_target(
+        cur,
+        TEST_STOCK_ID,
+        [(date(2026, 3, 10), 9000, 100), (date(2026, 3, 11), 3000, 100)],
+    )
+
+    rows = prices.adj_discontinuities(cur, BAND_LOW, BAND_HIGH, 20)
+    mine = [r for r in rows if r[0] == TEST_STOCK_ID]
+
+    assert len(mine) == 1
+    assert mine[0][4] == 0

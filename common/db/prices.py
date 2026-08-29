@@ -94,6 +94,54 @@ def price_jumps(
     return set(cur.fetchall())
 
 
+def adj_discontinuities(
+    cur: psycopg.Cursor, low: Decimal, high: Decimal, liquidation_days: int
+) -> list[tuple[str, date, date, Decimal, int]]:
+    """조정 후 시계열이 끊긴 곳. (종목, 직전 거래일, 거래일, 비율, 정지일수).
+
+    조정 대상 이벤트를 가진 종목만 본다. 조정계수가 붙지 않는 종목의
+    가격 급변은 여기서 볼 것이 아니다.
+
+    세 가지를 걸러야 실제 결함만 남는다 (2026-08-29 실측으로 갈랐다).
+
+    - **거래량 0 인 날을 뺀다.** KRX 는 거래정지 기간에도 행을 주는데
+      마지막 종가를 그대로 반복한다. 체결된 값이 아니다
+    - **정리매매를 뺀다.** 가격제한폭이 없어 하루 -80% 가 정상이다
+    - **정지 구간을 사이에 둔 것을 표시한다.** 정지 전후의 두 값은 둘 다
+      실제 체결가지만 며칠이 비어 있다. 연속 거래일의 급변과 같이 셀 수 없다
+
+    `halt_days` 가 0 이면 연속된 두 거래일이다. 그것만이 곧바로 결함이다.
+    """
+    cur.execute(
+        """
+        WITH target AS (
+            SELECT DISTINCT stock_id FROM corporate_action WHERE adjusts_price
+        ),
+        traded AS (
+            SELECT p.stock_id, p.trade_date, p.close * p.adj_factor px
+            FROM price_daily p JOIN target USING (stock_id)
+            WHERE p.volume > 0
+        ),
+        d AS (
+            SELECT stock_id, trade_date, px,
+                   LAG(px) OVER w prev, LAG(trade_date) OVER w prev_date
+            FROM traded WINDOW w AS (PARTITION BY stock_id ORDER BY trade_date)
+        )
+        SELECT d.stock_id, d.prev_date, d.trade_date, ROUND(d.px / d.prev, 4),
+               (SELECT COUNT(*) FROM price_daily h
+                WHERE h.stock_id = d.stock_id AND h.volume = 0
+                  AND h.trade_date > d.prev_date AND h.trade_date < d.trade_date)
+        FROM d JOIN stock s USING (stock_id)
+        WHERE d.prev > 0 AND (d.px / d.prev < %s OR d.px / d.prev > %s)
+          AND NOT (s.delisted_at IS NOT NULL
+                   AND s.delisted_at - d.trade_date BETWEEN 0 AND %s)
+        ORDER BY d.trade_date
+        """,
+        (low, high, liquidation_days),
+    )
+    return cur.fetchall()
+
+
 def reset_adj_factor(cur: psycopg.Cursor, stock_ids: Sequence[str]) -> int:
     """조정계수를 1 로 되돌린다. 다시 계산하기 전에 부른다."""
     if not stock_ids:
