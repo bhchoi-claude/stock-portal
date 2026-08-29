@@ -12,6 +12,7 @@ from common.db.actions import unclassified_increases, update_action_type
 from common.db.conn import connect, transaction
 from common.db.events import log_event
 
+from .corporate_action import simple_ratio
 from .dart import corp_codes, share_events
 
 logger = logging.getLogger(__name__)
@@ -61,16 +62,22 @@ def parse_dart_date(value: str) -> date | None:
 
 
 def match_event(
-    events: list[dict[str, str]], delta: int, effective: date, window_days: int
+    events: list[dict[str, str]],
+    quantities: set[int],
+    effective: date,
+    window_days: int,
 ) -> dict[str, str] | None:
     """발행 수량이 같고 날짜가 가까운 DART 이벤트를 고른다.
 
     **수량이 주된 키다.** DART 는 발행일을, 우리는 상장주식수 변경일을 쓰므로
     날짜가 며칠씩 어긋난다. 수량이 맞고 창 안에 있는 것 중 가장 가까운 것을 쓴다.
+
+    받아들일 수량이 둘이다. DART 가 증가분을 적을 때도 있고 발행 후 총수를
+    적을 때도 있다 (2023-11-23 KRX:129890 은 총수 50,643,410 이었다).
     """
     candidates = []
     for event in events:
-        if to_int(event.get("isu_dcrs_qy", "")) != delta:
+        if to_int(event.get("isu_dcrs_qy", "")) not in quantities:
             continue
         issued = parse_dart_date(event.get("isu_dcrs_de", ""))
         if issued is None or abs((effective - issued).days) > window_days:
@@ -80,6 +87,29 @@ def match_event(
     if not candidates:
         return None
     return min(candidates, key=lambda pair: pair[0])[1]
+
+
+def find_corp(codes: dict[str, str], stock_id: str) -> str | None:
+    """종목코드로 DART 고유번호를 찾는다.
+
+    우선주는 DART 목록에 없다. 회사 단위로 등록되기 때문이다.
+    마지막 자리를 0 으로 바꾼 보통주 코드로 다시 찾는다 (001465 -> 001460).
+    """
+    code = stock_id.rpartition(":")[2]
+    return codes.get(code) or codes.get(code[:-1] + "0")
+
+
+def fallback_by_ratio(before: int, after: int, params: dict) -> tuple[str, bool] | None:
+    """비율의 모양으로 가른다. DART 에 근거가 없을 때만 쓴다.
+
+    분할·무상증자는 1:N 이라 단순 분수가 되고, 유상증자·전환권행사는
+    임의 비율이 된다. DART 로 확인한 15건에서 예외가 없었다.
+    """
+    if simple_ratio(
+        after, before, params["max_denominator"], params["ratio_tolerance"]
+    ):
+        return ("split", True)
+    return ("rights", False)
 
 
 def main(argv: list[str]) -> int:
@@ -107,46 +137,53 @@ def main(argv: list[str]) -> int:
     unmatched: list[str] = []
     cache: dict[tuple[str, int], list[dict[str, str]]] = {}
 
-    for action_id, stock_id, effective, delta in pending:
-        code = stock_id.rpartition(":")[2]
-        corp = codes.get(code)
-        if corp is None:
-            # 폐지 종목은 DART 목록에서 빠진다
-            unmatched.append(f"{stock_id} (고유번호 없음)")
-            continue
+    for action_id, stock_id, effective, delta, before, after in pending:
+        corp = find_corp(codes, stock_id)
+        quantities = {delta, after}
+        style = ""
+        mapped = None
 
-        # 발행일이 전년일 수 있어 두 해를 본다
-        events: list[dict[str, str]] = []
-        for year in (effective.year, effective.year - 1):
-            key = (corp, year)
-            if key not in cache:
-                try:
-                    cache[key] = share_events(corp, year)
-                except BrokerError:
-                    logger.exception("%s %d 조회 실패", stock_id, year)
-                    cache[key] = []
-            events += cache[key]
+        if corp is not None:
+            # 발행일이 전년일 수 있어 두 해를 본다
+            events: list[dict[str, str]] = []
+            for year in (effective.year, effective.year - 1):
+                key = (corp, year)
+                if key not in cache:
+                    try:
+                        cache[key] = share_events(corp, year)
+                    except BrokerError:
+                        logger.exception("%s %d 조회 실패", stock_id, year)
+                        cache[key] = []
+                events += cache[key]
 
-        found = match_event(events, delta, effective, window)
-        if found is None:
-            unmatched.append(f"{stock_id} {effective} delta={delta:,}")
-            continue
+            found = match_event(events, quantities, effective, window)
+            if found is not None:
+                style = found.get("isu_dcrs_stle", "")
+                mapped = classify_style(style)
 
-        style = found.get("isu_dcrs_stle", "")
-        mapped = classify_style(style)
+        source = "dart"
         if mapped is None:
-            unmatched.append(f"{stock_id} {effective} 모르는 형태 {style}")
+            # DART 에 없거나 못 맞춘 것은 비율의 모양으로 가른다.
+            # DART 로 확인한 15건에서 분할은 전부 단순 분수, 유상증자는
+            # 전부 임의 비율이었다 (5.0/2.0/2.5 vs 1.5862/1.2295)
+            mapped = fallback_by_ratio(before, after, params)
+            source = "krx"
+            style = style or "비율 판정"
+
+        if mapped is None:
+            unmatched.append(f"{stock_id} {effective} 비율 {after / before:.4f}")
             continue
 
         action_type, adjusts = mapped
         with connect() as conn, transaction(conn) as cur:
-            update_action_type(cur, action_id, action_type, adjusts, style)
+            update_action_type(cur, action_id, action_type, adjusts, style, source)
         classified += 1
         logger.info(
-            "%s %s %s -> %s (조정 %s)",
+            "%s %s %s(%s) -> %s (조정 %s)",
             stock_id,
             effective,
             style,
+            source,
             action_type,
             "O" if adjusts else "X",
         )

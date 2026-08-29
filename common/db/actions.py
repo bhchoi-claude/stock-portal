@@ -66,13 +66,14 @@ def unclassified_increases(cur: psycopg.Cursor) -> list[tuple[int, str, object, 
     """아직 DART 로 분류하지 않은 주식수 증가 이벤트."""
     cur.execute(
         """
-        SELECT action_id, stock_id, effective_date, (detail->>'delta')::bigint
+        SELECT action_id, stock_id, effective_date, (detail->>'delta')::bigint,
+               (detail->>'shares_before')::bigint, (detail->>'shares_after')::bigint
         FROM corporate_action
         WHERE detail->>'classified' = 'false' AND detail ? 'delta'
         ORDER BY effective_date
         """
     )
-    return [(r[0], r[1], r[2], r[3]) for r in cur.fetchall()]
+    return [tuple(r) for r in cur.fetchall()]
 
 
 def update_action_type(
@@ -81,6 +82,7 @@ def update_action_type(
     action_type: str,
     adjusts_price: bool,
     style: str,
+    source: str,
 ) -> int:
     """DART 발행형태로 종류를 확정한다. 근거를 detail 에 남긴다."""
     cur.execute(
@@ -88,13 +90,13 @@ def update_action_type(
         UPDATE corporate_action
         SET action_type = %s,
             adjusts_price = %s,
-            source = 'dart',
+            source = %s,
             -- jsonb_build_object 는 파라미터 타입을 추론하지 못한다. 캐스트가 필요하다
             detail = detail || jsonb_build_object(
                 'classified', true, 'dart_style', %s::text
             )
         WHERE action_id = %s
         """,
-        (action_type, adjusts_price, style, action_id),
+        (action_type, adjusts_price, source, style, action_id),
     )
     return cur.rowcount
