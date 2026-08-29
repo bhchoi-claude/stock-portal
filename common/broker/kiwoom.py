@@ -14,8 +14,17 @@ from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from ..db.models import make_stock_id
 from ..env import require_env
-from ..types import Balance, Candle, IndexClose, InvestorFlow, Position, Quote
+from ..types import (
+    Balance,
+    Candle,
+    IndexClose,
+    InvestorFlow,
+    Position,
+    Quote,
+    StockState,
+)
 from .base import Broker, OrderRequest, OrderResult
 from .errors import PermanentError, RateLimitError, TransientError
 
@@ -35,6 +44,12 @@ MINUTE_API = "ka10080"
 QUOTE_API = "ka10001"
 FLOW_API = "ka10059"
 INDEX_API = "ka20006"
+STATE_API = "ka10099"
+
+# ka10099 의 시장 구분. 이 셋이면 stock 의 전 종목이 덮인다 (2026-08-29 실측).
+# 0 은 ETF·ETN 을 함께 주지만 우리 종목에 없어 그대로 흘려보낸다.
+# 3(ELW) 8(ETF) 30(OTCBB) 60(ETN) 5(신주인수권) 4(뮤추얼펀드) 는 부르지 않는다
+STATE_MARKETS = ("0", "10", "50")
 
 # ka10059 순매수 금액은 백만원 단위다 (2026-08-28 실측)
 FLOW_UNIT = 1_000_000
@@ -299,6 +314,33 @@ class KiwoomBroker(Broker):
             foreign_net=Decimal(row["frgnr_invsr"]) * FLOW_UNIT,
             institution_net=Decimal(row["orgn"]) * FLOW_UNIT,
             individual_net=Decimal(row["ind_invsr"]) * FLOW_UNIT,
+        )
+
+    def get_stock_states(self) -> list[StockState]:
+        """전 종목의 관리종목·거래정지 여부. Broker 규격 밖의 키움 전용 조회다.
+
+        기준일자를 받지 않는다. **현재 상태만 오고 과거는 조회할 수 없다.**
+
+        두 필드를 함께 봐야 한다 (2026-08-29 실측).
+
+        - `auditInfo` 는 값이 하나뿐이라 거래정지가 관리종목을 덮어쓴다.
+          코스닥 관리종목 123건 중 66건만 여기에 남는다
+        - `state` 는 다중값이라 관리종목이 가려지지 않는다. 그러나 거래정지는
+          일부만 적힌다 (코스닥 31 / 93). 거래량 0 과 맞춰 확인했다
+        """
+        states: list[StockState] = []
+        for market in STATE_MARKETS:
+            data = self._call(STATE_API, INFO_PATH, {"mrkt_tp": market})
+            states.extend(self._to_state(row) for row in data.get("list") or [])
+        return states
+
+    @staticmethod
+    def _to_state(row: dict[str, str]) -> StockState:
+        # state 는 '증거금40%|담보대출|신용가능' 처럼 | 로 나뉜다
+        return StockState(
+            stock_id=make_stock_id("KRX", row["code"]),
+            is_managed="관리종목" in row["state"].split("|"),
+            is_suspended=row["auditInfo"] == "거래정지",
         )
 
     def get_index_closes(self, index_code: str, end: date) -> list[IndexClose]:

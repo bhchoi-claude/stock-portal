@@ -86,3 +86,16 @@ class IndexClose:
     index_code: str
     trade_date: date
     close: Decimal
+
+
+@dataclass(frozen=True)
+class StockState:
+    """종목의 관리종목·거래정지 여부. 어느 시점인지는 담지 않는다.
+
+    출처가 현재 상태만 주고 기준일자를 받지 않는다. 언제의 값인지는
+    수집기가 적재 시점으로 정한다.
+    """
+
+    stock_id: str
+    is_managed: bool
+    is_suspended: bool

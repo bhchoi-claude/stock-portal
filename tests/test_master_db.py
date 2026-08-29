@@ -11,6 +11,7 @@ from common.db import master
 from common.db.conn import load_database_url
 from common.db.events import log_event
 from common.db.models import Account, Holiday, Source, Stock, StockStatus, make_stock_id
+from common.types import StockState
 
 TEST_CODE = "999990"
 TEST_STOCK_ID = make_stock_id("KRX", TEST_CODE)
@@ -90,6 +91,39 @@ def test_재적재는_기존_값을_지우지_않는다(cur):
     assert got.sector == "전기전자"
     assert got.listed_shares == 1000
     assert got.listed_at == date(2020, 1, 2)
+
+
+def test_krx_재적재가_플래그를_되돌리지_않는다(cur):
+    # 플래그의 출처는 키움이다. KRX 로 종목 마스터를 돌려도 지워지면 안 된다
+    master.upsert_stocks(cur, [sample_stock()])
+    master.set_stock_flags(
+        cur, [StockState(TEST_STOCK_ID, is_managed=True, is_suspended=True)]
+    )
+
+    master.upsert_stocks(cur, [sample_stock()])
+
+    got = master.get_stock(cur, TEST_STOCK_ID)
+    assert got.is_managed is True
+    assert got.is_suspended is True
+
+
+def test_열린_상태_행의_플래그를_제자리에서_고친다(cur):
+    master.upsert_stocks(cur, [sample_stock()])
+    master.open_stock_status(
+        cur,
+        [
+            StockStatus(
+                stock_id=TEST_STOCK_ID, valid_from=date(2026, 8, 25), board="KOSPI"
+            )
+        ],
+    )
+
+    master.set_status_flags(
+        cur, [StockState(TEST_STOCK_ID, is_managed=True, is_suspended=False)]
+    )
+
+    opened = master.open_statuses(cur)
+    assert opened[TEST_STOCK_ID] == (date(2026, 8, 25), True, False)
 
 
 def test_상태는_열린_행이_있으면_새로_열지_않는다(cur):

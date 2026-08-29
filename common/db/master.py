@@ -7,6 +7,7 @@ from datetime import date
 
 import psycopg
 
+from ..types import StockState
 from .models import Account, Holiday, Source, Stock, StockStatus
 
 # SELECT 와 dataclass 필드 순서를 한 곳에서 맞춘다. 어긋나면 test_schema_drift 가 잡는다.
@@ -49,6 +50,11 @@ def upsert_stocks(cur: psycopg.Cursor, stocks: Sequence[Stock]) -> int:
 
     sector·listed_shares·상장일은 COALESCE 로 덮어쓴다. 출처마다 주는 필드가
     달라서, 그 필드가 없는 출처로 적재할 때 기존 값을 지우면 안 된다.
+
+    `is_managed`·`is_suspended` 는 갱신 시 **손대지 않는다.** 이 둘의 출처는
+    KRX 가 아니라 키움이고 `stock_flags` 수집기가 소유한다. 여기서 덮으면
+    KRX 로 종목 마스터를 돌릴 때마다 FALSE 로 되돌아간다.
+    신규 삽입 시에는 기본값 FALSE 로 들어가고 그 수집기가 채운다.
     """
     if not stocks:
         return 0
@@ -65,8 +71,8 @@ def upsert_stocks(cur: psycopg.Cursor, stocks: Sequence[Stock]) -> int:
             name          = EXCLUDED.name,
             sector        = COALESCE(EXCLUDED.sector, stock.sector),
             listed_shares = COALESCE(EXCLUDED.listed_shares, stock.listed_shares),
-            is_managed    = EXCLUDED.is_managed,
-            is_suspended  = EXCLUDED.is_suspended,
+            is_managed    = stock.is_managed,
+            is_suspended  = stock.is_suspended,
             is_spac       = EXCLUDED.is_spac,
             is_preferred  = EXCLUDED.is_preferred,
             listed_at     = COALESCE(EXCLUDED.listed_at, stock.listed_at),
@@ -237,6 +243,43 @@ def close_stock_status(cur: psycopg.Cursor, stock_ids: Sequence[str], day: date)
         (day, list(stock_ids)),
     )
     return cur.rowcount
+
+
+def open_statuses(cur: psycopg.Cursor) -> dict[str, tuple[date, bool, bool]]:
+    """열려 있는 상태 행. 플래그 변경 감지의 '이전 적재' 쪽이다."""
+    cur.execute(
+        "SELECT stock_id, valid_from, is_managed, is_suspended"
+        " FROM stock_status WHERE valid_to IS NULL"
+    )
+    return {row[0]: (row[1], row[2], row[3]) for row in cur.fetchall()}
+
+
+def set_status_flags(cur: psycopg.Cursor, states: Sequence[StockState]) -> int:
+    """열린 상태 행의 플래그를 제자리에서 고친다.
+
+    그 행이 오늘 열렸을 때만 쓴다. 오늘 열린 행을 오늘 끊고 다시 열면
+    길이 0 인 구간이 생기고, `valid_from` 이 같아 새 행이 들어가지도 못한다.
+    """
+    if not states:
+        return 0
+    cur.executemany(
+        "UPDATE stock_status SET is_managed = %s, is_suspended = %s"
+        " WHERE stock_id = %s AND valid_to IS NULL",
+        [(s.is_managed, s.is_suspended, s.stock_id) for s in states],
+    )
+    return len(states)
+
+
+def set_stock_flags(cur: psycopg.Cursor, states: Sequence[StockState]) -> int:
+    """stock 의 현재값 캐시를 맞춘다. 이력은 stock_status 가 정본이다."""
+    if not states:
+        return 0
+    cur.executemany(
+        "UPDATE stock SET is_managed = %s, is_suspended = %s, updated_at = NOW()"
+        " WHERE stock_id = %s",
+        [(s.is_managed, s.is_suspended, s.stock_id) for s in states],
+    )
+    return len(states)
 
 
 def refine_delisted_at(cur: psycopg.Cursor) -> int:
