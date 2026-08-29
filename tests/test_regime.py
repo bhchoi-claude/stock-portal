@@ -180,13 +180,38 @@ def test_실제_규칙_파일의_지표_가중치_합이_계층마다_일이다(
         assert total == pytest.approx(1.0), layer
 
 
+def _danger_values(rules, layer):
+    """해당 계층 지표를 전부 danger 임계값으로 채운다.
+
+    임계값을 테스트에 박아 두면 재조정할 때마다 깨진다.
+    규칙 파일에서 끌어와 '어느 쪽이 위험인가' 만 검증한다.
+    """
+    return {
+        i["code"]: v(i["thresholds"]["danger"])
+        for i in rules["layers"][layer]["indicators"]
+    }
+
+
 def test_실제_규칙_파일로_판정이_돈다():
     rules = load_config("regime_rules")
-    values = {"VKOSPI": v(30), "USDKRW": v(1500)}
+
+    result = evaluate(rules, _danger_values(rules, "risk"), AS_OF)
+
+    assert isinstance(result, RegimeResult)
+    # risk 계층 지표가 전부 danger 임계값이면 계층 점수는 -1 이다
+    assert result.layer_scores["risk"] == Decimal(-1)
+    assert result.score == Decimal(-1)
+    assert result.regime is Regime.DANGER
+
+
+def test_실제_규칙_파일에서_safe_쪽도_동작한다():
+    rules = load_config("regime_rules")
+    values = {
+        i["code"]: v(i["thresholds"]["safe"])
+        for i in rules["layers"]["risk"]["indicators"]
+    }
 
     result = evaluate(rules, values, AS_OF)
 
-    assert isinstance(result, RegimeResult)
-    # 위험 지표 둘만 최악이면 risk 계층 점수는 -1 이다
-    assert result.layer_scores["risk"] == Decimal(-1)
-    assert result.score == Decimal(-1)
+    assert result.layer_scores["risk"] == Decimal(1)
+    assert result.regime is Regime.SAFE

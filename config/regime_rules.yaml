@@ -1,6 +1,12 @@
 # 시장국면 판정 규칙. 임계값을 코드에 쓰지 않는다 (CLAUDE.md 절대규칙 1)
 #
-# **임계값은 전부 임시값이다.** 맞을 리가 없고 데이터가 쌓이면 조정한다.
+# 2026-08-29 에 실측 분포의 10/90 분위수로 재조정했다.
+# 이전 값(2026-08-28)은 85~99% 가 +-1 로 포화돼 사실상 이진 신호였다.
+#
+# **표본이 얇고 편향돼 있다.** 일간 지표는 254일, 월간은 11~12개월뿐이고
+# 그 구간이 이례적인 강세장(이격도 중앙값 +36%, VKOSPI 중앙값 50)이다.
+# 평범한 장이 오면 다시 어긋난다. 데이터가 쌓이면 또 조정한다.
+#
 # 바꿀 때 version 을 함께 올린다. market_regime.rule_version 으로
 # 변경 전후를 구분한다 (ROADMAP Phase 3 주의사항).
 #
@@ -15,7 +21,7 @@
 # max_age_days 를 넘게 묵은 값은 없는 것으로 본다. 죽은 소스의 마지막 값이
 # 영원히 판정에 남는 것을 막는다.
 
-version: "2026-08-28"
+version: "2026-08-29"
 
 layers:
   sentiment:
@@ -25,20 +31,23 @@ layers:
         weight: 0.35
         metric: change_rate
         max_age_days: 5
-        thresholds: { danger: -0.02, safe: 0.02 }
+        # 예탁금이 빠지면 위험. p10 -0.0335 / p90 0.0329
+        thresholds: { danger: -0.034, safe: 0.033 }
 
       - code: CREDIT_BALANCE
         weight: 0.30
         metric: change_rate
         max_age_days: 5
-        # 신용잔고는 늘수록 위험하다. danger 가 safe 보다 크다
-        thresholds: { danger: 0.02, safe: -0.02 }
+        # 신용잔고는 늘수록 위험하다. danger 가 safe 보다 크다.
+        # p90 0.0122 / p10 -0.0077
+        thresholds: { danger: 0.012, safe: -0.008 }
 
       - code: FOREIGN_NET
         weight: 0.35
         max_age_days: 5
-        # 단위는 억원 (indicator 표 정의). 순매수면 안전, 순매도면 위험
-        thresholds: { danger: -3000, safe: 3000 }
+        # 단위는 억원 (indicator 표 정의). 순매수면 안전, 순매도면 위험.
+        # p10 -44,381 / p90 21,890. 이 구간은 순매도 쪽으로 치우쳐 있다
+        thresholds: { danger: -44000, safe: 22000 }
 
   risk:
     weight: 0.30
@@ -46,14 +55,14 @@ layers:
       - code: VKOSPI
         weight: 0.60
         max_age_days: 5
-        # 변동성은 높을수록 위험하다
-        thresholds: { danger: 25.0, safe: 15.0 }
+        # 변동성은 높을수록 위험하다. p90 84.35 / p10 20.98
+        thresholds: { danger: 84.0, safe: 21.0 }
 
       - code: USDKRW
         weight: 0.40
         max_age_days: 5
-        # 원화 약세가 위험 신호다
-        thresholds: { danger: 1450.0, safe: 1300.0 }
+        # 원화 약세가 위험 신호다. p90 1513.4 / p10 1392.7
+        thresholds: { danger: 1513.0, safe: 1393.0 }
 
   position:
     weight: 0.20
@@ -61,8 +70,11 @@ layers:
       - code: KOSPI_MA200_GAP
         weight: 1.00
         max_age_days: 5
-        # 이격도(%). 과열도 과랭도 위험하지만 초기에는 단순 선형으로 둔다
-        thresholds: { danger: -10.0, safe: 5.0 }
+        # 이격도(%). p10 16.83 / p90 66.95.
+        # **여기는 도메인 검토가 필요하다.** 분위수를 그대로 쓰면
+        # 이격도 67% 가 '안전' 이 되는데, 실제로는 과열 신호에 가깝다.
+        # 과열과 과랭을 함께 위험으로 보려면 선형이 아닌 규칙이 필요하다
+        thresholds: { danger: 17.0, safe: 67.0 }
 
   fundamental:
     weight: 0.15
@@ -70,12 +82,14 @@ layers:
       - code: EXPORT_YOY
         weight: 0.60
         max_age_days: 60
-        thresholds: { danger: -5.0, safe: 5.0 }
+        # p10 7.93 / p90 62.96. **표본이 12개월뿐이다**
+        thresholds: { danger: 8.0, safe: 63.0 }
 
       - code: EXPORT_SEMI_YOY
         weight: 0.40
         max_age_days: 60
-        thresholds: { danger: -10.0, safe: 10.0 }
+        # p10 21.57 / p90 166.29. **표본이 11개월뿐이다**
+        thresholds: { danger: 22.0, safe: 166.0 }
 
 output:
   danger_below: -0.3
