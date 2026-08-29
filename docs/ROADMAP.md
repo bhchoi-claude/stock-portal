@@ -92,7 +92,7 @@
 - [ ] 종목 상태 갱신 (관리종목·거래정지 등, 일 1회)
   - `stock` 현재값 갱신 + `stock_status` 변경 이력 기록
   - 상장·폐지 감지 (`listed_at`, `delisted_at`). **행을 삭제하지 않는다**
-- [ ] `corporate_action` 수집 (분할·병합·무상증자)
+- [x] `corporate_action` 수집 (2026-08-29) — 411건 조정 대상 (분할·병합·무상증자)
   - 출처 확인 필요: 키움 API / DART 공시 / KRX
 - [ ] `price_daily.adj_factor` 계산 배치
   - 이벤트 추가 시 해당 종목만 재계산
