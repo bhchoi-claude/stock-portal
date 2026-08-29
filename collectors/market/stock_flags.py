@@ -12,6 +12,7 @@ from common.config import load_config
 from common.db import master
 from common.db.conn import connect, transaction
 from common.db.events import log_event
+from common.db.heartbeat import run_with_heartbeat
 from common.db.models import StockStatus
 from common.types import StockState
 
@@ -134,4 +135,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(run_with_heartbeat("stock_flags", main, sys.argv))

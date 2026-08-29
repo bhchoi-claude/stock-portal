@@ -10,6 +10,7 @@ from common.broker.kiwoom import KiwoomBroker
 from common.config import load_config
 from common.db.conn import connect, transaction
 from common.db.events import log_event
+from common.db.heartbeat import run_with_heartbeat
 from common.db.prices import top_by_value, upsert_price_minute
 
 logger = logging.getLogger(__name__)
@@ -73,4 +74,4 @@ def main(argv: list[str]) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(run_with_heartbeat("price_minute", main, sys.argv))

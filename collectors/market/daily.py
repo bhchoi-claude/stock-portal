@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 from common.config import load_config
 from common.db.conn import connect, transaction
 from common.db.events import log_event
+from common.db.heartbeat import run_with_heartbeat
 from common.notify.base import Notifier
 from common.notify.telegram import TelegramNotifier
 
@@ -184,4 +185,4 @@ def main(argv: list[str], notifier: Notifier | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(run_with_heartbeat("daily", main, sys.argv))
