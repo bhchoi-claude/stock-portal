@@ -60,3 +60,38 @@ def action_stock_ids(cur: psycopg.Cursor) -> list[str]:
     """조정 이벤트가 있는 종목. 조정계수를 되돌릴 범위다."""
     cur.execute("SELECT DISTINCT stock_id FROM corporate_action")
     return [row[0] for row in cur.fetchall()]
+
+
+def unclassified_increases(cur: psycopg.Cursor) -> list[tuple[int, str, object, int]]:
+    """아직 DART 로 분류하지 않은 주식수 증가 이벤트."""
+    cur.execute(
+        """
+        SELECT action_id, stock_id, effective_date, (detail->>'delta')::bigint
+        FROM corporate_action
+        WHERE detail->>'classified' = 'false' AND detail ? 'delta'
+        ORDER BY effective_date
+        """
+    )
+    return [(r[0], r[1], r[2], r[3]) for r in cur.fetchall()]
+
+
+def update_action_type(
+    cur: psycopg.Cursor,
+    action_id: int,
+    action_type: str,
+    adjusts_price: bool,
+    style: str,
+) -> int:
+    """DART 발행형태로 종류를 확정한다. 근거를 detail 에 남긴다."""
+    cur.execute(
+        """
+        UPDATE corporate_action
+        SET action_type = %s,
+            adjusts_price = %s,
+            source = 'dart',
+            detail = detail || jsonb_build_object('classified', true, 'dart_style', %s)
+        WHERE action_id = %s
+        """,
+        (action_type, adjusts_price, style, action_id),
+    )
+    return cur.rowcount

@@ -38,12 +38,12 @@ def test_주식수가_그대로면_가격이_움직여도_이벤트가_아니다
     assert increased == []
 
 
-def test_주식수가_늘면_보류한다():
+def test_주식수가_늘면_가격을_조정하지_않는다():
     # 무상증자와 유상증자가 섞여 있어 adjusts_price 를 정할 수 없다
     actions, increased = detect_actions(DAY, {"KRX:X": 100}, {"KRX:X": 200}, JUMPED)
 
-    assert actions == []
     assert increased == ["KRX:X"]
+    assert all(a.adjusts_price is False for a in actions)
 
 
 def test_신규_종목은_이벤트가_아니다():
@@ -147,3 +147,15 @@ def test_조정_대상이_아니면_관측값을_그대로_둔다():
 
     assert actions[0].adjusts_price is False
     assert round(actions[0].ratio, 4) == Decimal("0.9378")
+
+
+def test_주식수가_늘면_수량을_남기되_조정하지_않는다():
+    # DART 로 무상·유상을 가리려면 발행 수량이 필요하다.
+    # DART 날짜는 발행일이라 우리 감지일과 다르므로 수량이 유일한 키다
+    actions, increased = detect_actions(DAY, {"KRX:X": 100}, {"KRX:X": 250}, JUMPED)
+
+    assert increased == ["KRX:X"]
+    assert len(actions) == 1
+    assert actions[0].adjusts_price is False
+    assert actions[0].detail["delta"] == 150
+    assert actions[0].detail["classified"] is False

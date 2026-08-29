@@ -69,8 +69,7 @@ def active_indicators(cur: psycopg.Cursor, *, regime_only: bool = False) -> list
 def touch_source(cur: psycopg.Cursor, kind: str, identifier: str) -> int:
     """수집 성공 시각을 남긴다. 등록되지 않은 소스면 아무것도 하지 않는다."""
     cur.execute(
-        "UPDATE source SET last_success_at = NOW()"
-        " WHERE kind = %s AND identifier = %s",
+        "UPDATE source SET last_success_at = NOW() WHERE kind = %s AND identifier = %s",
         (kind, identifier),
     )
     return cur.rowcount

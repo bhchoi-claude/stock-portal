@@ -27,6 +27,11 @@ SOURCE = "krx"
 # 실제 구분은 detail 의 상장주식수로 남긴다
 MERGE = "merge"
 
+# 주식수가 늘어난 경우. 무상증자(조정 대상)와 유상증자·전환권행사(조정 아님)가
+# 섞여 있다. DART 로 가리기 전까지는 조정하지 않는다.
+# 수량을 남겨 둬야 DART 발행 수량과 맞출 수 있다 (날짜는 서로 다르다)
+INCREASE = "rights"
+
 
 def simple_ratio(
     before: int, after: int, max_denominator: int, tol: float
@@ -105,6 +110,23 @@ def detect_actions(
             continue
         if now > was:
             increased.append(stock_id)
+            # 조정하지 않지만 수량을 남긴다. DART 분류가 이 값을 키로 쓴다
+            actions.append(
+                CorporateAction(
+                    stock_id=stock_id,
+                    effective_date=day,
+                    action_type=INCREASE,
+                    adjusts_price=False,
+                    ratio=Decimal(now) / Decimal(was),
+                    source=SOURCE,
+                    detail={
+                        "shares_before": was,
+                        "shares_after": now,
+                        "delta": now - was,
+                        "classified": False,
+                    },
+                )
+            )
             continue
         snapped = simple_ratio(was, now, max_denominator, tol)
         simple = snapped is not None
