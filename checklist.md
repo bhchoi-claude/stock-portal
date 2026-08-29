@@ -63,9 +63,9 @@
 
 ## 사용자 조치 필요
 
-- [ ] **`stock-portal-kiwoom.service` 갱신** — `stock_flags` ExecStart 한 줄이
-      저장소에만 있다. 서버 유닛에 반영해야 매일 자동으로 돈다.
-      반영 전까지는 손으로 돌려야 한다
+- [x] `stock-portal-kiwoom.service` 갱신 (2026-08-29) — `stock_flags` 반영.
+      저장소와 동일하고 systemd 가 `ExecStart` 4줄을 모두 읽었다.
+      타이머 enabled+active, 다음 실행 08-31 16:10
 
 - [x] 일 1회 유닛 갱신 (2026-08-29) — `ExecStart` 4줄 반영. 저장소와 동일함을 확인
 - [x] 키움 수집 타이머 등록 (2026-08-29) — enabled+active, 다음 실행 08-31 16:10
