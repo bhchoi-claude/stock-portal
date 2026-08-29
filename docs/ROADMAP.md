@@ -122,17 +122,18 @@
 
 ### 작업
 
-- [ ] `Collector` 플러그인 구조 (`INTERFACES.md` 6장)
-- [ ] 소스별 수집기 구현 (각 API 스펙 확인 필요)
-  - KRX: VKOSPI, KOSPI 지수, 외국인 순매수
+- [x] `Collector` 플러그인 구조 (2026-08-29)
+- [x] 소스별 수집기 구현 (2026-08-29) — 지표 8종 1,387건
+  - 키움 `ka20006`: VKOSPI, KOSPI 지수 (KRX 지수 API 는 불필요했다)
+  - 키움 `ka10059`: 외국인 순매수 (전 종목 집계)
   - 금융투자협회: 투자자예탁금, 신용잔고
   - 관세청: 수출 증가율, 반도체 수출 증가율
-  - 환율: 원달러
-- [ ] `KOSPI_MA200_GAP` 계산 (수집이 아닌 파생)
-- [ ] `RegimeEngine` + `config/regime_rules.yaml`
-- [ ] 일 1회 판정 → `market_regime` 적재
-- [ ] 익일 `kospi_return` 채우기 배치
-- [ ] 국면 전환 시 알림
+  - ECOS: 원달러 환율
+- [x] `KOSPI_MA200_GAP` 계산 (2026-08-29)
+- [x] `RegimeEngine` + `config/regime_rules.yaml` (2026-08-28)
+- [x] 일 1회 판정 → `market_regime` 적재 (2026-08-28)
+- [x] 익일 `kospi_return` 채우기 배치 (2026-08-28)
+- [x] 국면 전환 시 알림 (2026-08-28)
 
 **완료 기준**
 - 지표 8종이 매일 자동 수집됨

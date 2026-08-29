@@ -1,96 +1,92 @@
-# checklist.md — Phase 3 시장분석
+# checklist.md — Phase 3 시장분석 (코드 작업 완료)
 
 > Phase 1·2 체크리스트는 커밋 `2227f15` 이전 이력에 있다.
 > 완료 요약은 `docs/ROADMAP.md` 진행 현황 참조.
 
-**주문이 나가지 않아 안전하다. 수집기 플러그인 구조를 여기서 검증한다.**
-
 ---
 
-## 실측으로 확인된 것 (2026-08-28)
+## 실측으로 확인된 것 (2026-08-29)
 
-- `indicator` 8종은 이미 적재돼 있다. `indicator_value` 는 비어 있다
-- **KRX 지수 API 3종(`idx/kospi_dd_trd` 등)은 미신청이다.** 401 이 온다.
-  경로는 맞다 (401 JSON 이 왔다는 것이 그 증거다)
-- 키움 `ka10059` 로 종목별 수급은 받고 있다. 상위 200종목뿐이다
+수집기를 고칠 때 이 전제를 다시 확인하지 않아도 된다.
 
-## 출처 조사 결과 (2026-08-28)
+- **`indicator` 표가 지표의 정본 단위를 정의한다.** 수집기를 만들기 전에 읽는다.
+  억원·%를 원·달러로 넣어 두 번 틀렸다
+- data.go.kr 서비스키는 **Encoding 형태**로 온다. `unquote` 후 인코딩해야 한다.
+  그대로 `urlencode` 하면 이중 인코딩으로 403 이다
+- 금융투자협회는 JSON, **관세청은 XML 만** 준다
+- 관세청은 조회 구간이 **1년**이다. 응답 마지막에 `총계` 행이 붙는다
+- 품목별 수출입실적은 10자리 세부코드로 쪼개져 와서 합산이 필요하다
+- 키움 지수(`ka20006`)는 **100배**로 온다. `ka20003` 현재가와 대조해 확정했다
+- 키움 분봉 가격의 부호는 벗기고, **수급 값의 부호는 벗기면 안 된다.**
+  전자는 전일대비 방향 표시이고 후자는 순매도라는 뜻이다
+- KRX 지수 API 이용신청은 필요 없다. 키움 `ka20006` 에 KOSPI·KOSDAQ·변동성지수가
+  600건씩 있다
 
-**KRX 지수 API 이용신청은 필요 없다.** 키움에 다 있다.
+## 플러그인 구조
 
-| 지표 | 출처 | 신청 |
-|---|---|---|
-| `VKOSPI` | 키움 `ka20006` 업종코드 `603` | **불필요** |
-| `KOSPI_MA200_GAP` | 키움 `ka20006` 업종코드 `001` | **불필요** |
-| `kospi_return` | 위와 같음 | **불필요** |
-| `FOREIGN_NET` | 키움 `ka10059` (이미 수집 중) | 불필요 |
-| `DEPOSIT` / `CREDIT_BALANCE` | data.go.kr 금융위원회_금융투자협회종합통계정보 | 자동승인 |
-| `EXPORT_YOY` / `EXPORT_SEMI_YOY` | data.go.kr 관세청_품목별 수출입실적(GW) | 개발단계 자동승인 |
-| `USDKRW` | 한국은행 ECOS | 가입 시 자동 발급 |
-
-## 사용자 조치 필요
-
-서버 `.env` 에 아래 세 줄을 채운다. 이름은 `.env.example` 에 적어 뒀다.
-
-- [ ] `DATA_GO_KR_API_KEY` — 계정 하나로 아래 셋을 활용신청한다.
-      셋 다 개발단계 자동승인이고 인증키는 계정당 하나다
-  - 금융위원회_금융투자협회종합통계정보 (15094809) — `증시자금추이`
-  - 관세청_수출입총괄(GW) (15102108) — 총 수출
-  - 관세청_품목별 수출입실적(GW) (15101609) — 반도체는 HS 코드로 뽑는다
-- [ ] `ECOS_API_KEY` — ecos.bok.or.kr 회원가입 시 자동 발급
-- [ ] `DART_API_KEY` — Phase 2 잔여분(인적분할·배당)과 Phase 5 에 쓴다
-
-**키 값은 커밋하지 않고 대화에도 남기지 않는다.** 서버에서 직접 넣는다.
-
-## 확인이 남은 것
-
-- 투자자예탁금은 `증시자금추이` 에 있는 것으로 보인다 (데이터 키워드로 확인).
-  **응답 필드 이름은 키를 받은 뒤 실측해야 확정된다**
-- 수출 **20일 잠정치**는 월간 실적과 다른 자료다.
-  `PROJECT.md` 는 20일 잠정치를 쓴다고 적혀 있는데, 조사한 두 관세청 API 는
-  월 단위(매월 15일경 전월 확정)다. 실측 때 다시 본다
-
-## 플러그인 구조 (막히지 않음)
-
-- [x] `Collector` ABC + `CollectResult` / `IndicatorRecord` (2026-08-28)
-- [x] 수집기 실행기 (2026-08-28) — `collectors/market/indicator_runner.py`
+- [x] `Collector` ABC + `CollectResult` / `IndicatorRecord` (`INTERFACES.md` 6장)
+- [x] 수집기 실행기 — `collectors/market/indicator_runner.py`
 - [x] 실패를 `event_log` 에 남기고 `source.last_success_at` 을 갱신한다
-- [x] 1시간 내 반복 실패 시 알림 (2026-08-28)
-- [x] `indicator_value` 적재 + 전기 대비 `change_rate` 계산 (2026-08-28)
+- [x] 반복 실패 시 알림 — 관찰 창을 수집기 주기에 맞춘다.
+      '1시간' 을 그대로 쓰면 하루 한 번 도는 수집기는 영원히 알리지 못한다
+- [x] `indicator_value` 적재 + 전기 대비 `change_rate` 계산
 
-## 지표 수집기
+## 지표 수집기 (8종)
 
-- [x] `FOREIGN_NET` (2026-08-29) — 상장 2849종목 전체. 커버리지 98.9% 이상
-- [ ] **임계값 재조정** — 지표 8종이 다 붙은 뒤 한 번에 한다 (승인 사항).
-      지금은 85~99% 포화라 사실상 이진 신호다. 알고 두는 상태다.
-      조정할 때 `regime_rules.yaml` 의 `version` 을 올린다
-- [x] `VKOSPI` / `KOSPI_MA200_GAP` (2026-08-28) — 키움 `ka20006`. 254일치 적재
-- [ ] `DEPOSIT` / `CREDIT_BALANCE` — data.go.kr 인증키 대기
-- [ ] `USDKRW` — ECOS 인증키 대기
-- [ ] `EXPORT_YOY` / `EXPORT_SEMI_YOY` — data.go.kr 인증키 대기
+- [x] `VKOSPI` / `KOSPI_MA200_GAP` — 키움 `ka20006`. 각 254건
+- [x] `FOREIGN_NET` — `trading_flow` 집계. 상장 2849종목, 커버리지 98.9% 이상
+- [x] `DEPOSIT` / `CREDIT_BALANCE` — 금융투자협회. 각 252건
+- [x] `USDKRW` — ECOS `731Y001`/`0000001`. 254건
+- [x] `EXPORT_YOY` / `EXPORT_SEMI_YOY` — 관세청. 전년 동월 증가율
 
 ## 국면 판정
 
-- [x] `config/regime_rules.yaml` (2026-08-28) — 임계값은 전부 임시값이다
-- [x] `RegimeEngine` (2026-08-28) — 결측 정규화 테스트 포함
-- [x] 일 1회 판정 → `market_regime` 적재 (2026-08-28) — 일 1회 유닛에 연결
-- [x] 익일 `kospi_return` 채우기 (2026-08-28) — `kosdaq_return` 도 함께
-- [x] 국면 전환 시 알림 (2026-08-28) — 같은 국면 유지 시 무음. 실검증
+- [x] `config/regime_rules.yaml`
+- [x] `RegimeEngine` — 결측 시 남은 가중치로 정규화. 테스트로 고정
+- [x] 일 1회 판정 → `market_regime` 적재
+- [x] 익일 `kospi_return` / `kosdaq_return` 채우기
+- [x] 국면 전환 시 알림 — 같은 국면 유지 시 무음
+- [x] 임계값 재조정 (2026-08-29) — 10/90 분위수. 포화 85~99% → 20~25%.
+      `rule_version` 을 올려 이전 판정과 구분된다
+- [ ] **`KOSPI_MA200_GAP` 도메인 검토** — 분위수를 그대로 쓰면 이격도 67% 가
+      '안전' 이 된다. 실제로는 과열 신호다. 과열과 과랭을 함께 위험으로 보려면
+      선형이 아닌 규칙이 필요하다. 전략 판단이라 임의로 정하지 않았다
 
 ## Phase 3 완료 기준
 
-- [ ] 지표 8종이 매일 자동 수집됨
-- [ ] 국면 판정이 매일 기록되고 이력이 쌓임
-- [x] 소스 하나를 강제로 실패시켜도 나머지가 정상 동작 (2026-08-29)
-      — 5개 중 2개를 강제 실패시켜 나머지 3개가 정상 적재하는 것을 확인
+- [x] 지표 8종이 매일 자동 수집됨 — 1,387건
+- [x] 국면 판정이 매일 기록되고 이력이 쌓임
+- [x] 소스 하나를 강제로 실패시켜도 나머지가 정상 동작 — 5종 중 2종을
+      강제 실패시켜 나머지 3종이 정상 적재하는 것을 확인
 
 ---
 
-## Phase 2 잔여 (사용자 조치)
+## 사용자 조치 필요
 
-- [ ] 키움 수집 타이머 등록 — `deploy/README.md` 참조. sudo 필요
+인증키 세 개는 모두 들어갔다. 남은 것은 systemd 와 정리뿐이다.
+
+- [ ] **일 1회 유닛 갱신** — 지표 수집·국면 판정이 추가됐다
+
+      sudo cp ~/stock-portal/deploy/stock-portal-daily.service /etc/systemd/system/
+      sudo systemctl daemon-reload
+
+- [ ] **키움 수집 타이머 등록** — 파티션·분봉·수급
+
+      sudo cp ~/stock-portal/deploy/stock-portal-kiwoom.service /etc/systemd/system/
+      sudo cp ~/stock-portal/deploy/stock-portal-kiwoom.timer /etc/systemd/system/
+      sudo systemctl daemon-reload
+      sudo systemctl enable --now stock-portal-kiwoom.timer
+
+- [ ] **`.env` 의 중복된 `DART_API_KEY=` 빈 줄 삭제** — 지금은 파서가 나중 줄을
+      써서 동작하지만 순서가 바뀌면 조용히 빈 값이 된다
 - [ ] 재부팅 후 자동 기동 확인 — 서버 재부팅이 필요하다
-- [ ] 인적분할 조정 / 무상·유상증자 구분 / 현금배당 — DART 키가 `.env` 에 들어가면
+
+## Phase 2 잔여 (DART 키가 들어왔으므로 진행 가능)
+
+- [ ] 인적분할 조정 — 분할 가치 비율이 필요하다. 4건이 아직 끊겨 있다
+- [ ] 주식수 증가분에서 무상증자와 유상증자 구분
+- [ ] 현금배당 수집
+- [ ] `is_managed` / `is_suspended` 출처 — KRX 종목기본정보에 없다
 
 ## 건드리지 않은 것
 
