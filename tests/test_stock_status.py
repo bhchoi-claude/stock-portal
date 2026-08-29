@@ -1,7 +1,11 @@
 # 상장·폐지·이전상장 감지를 확인한다
 
-from collectors.market.stock_status import detect
-from common.db.models import Stock
+from dataclasses import replace
+from datetime import date
+
+from collectors.market.stock_status import Changes, apply, detect
+from common.db import master
+from common.db.models import Stock, StockStatus, make_stock_id
 
 
 def stock(code: str, board: str = "KOSPI") -> Stock:
@@ -66,3 +70,36 @@ def test_빈_응답이면_전_종목_폐지로_보인다():
     changes = detect([], {"KRX:005930": "KOSPI"}, set())
 
     assert changes.delisted == ["KRX:005930"]
+
+
+def test_이전상장은_플래그를_가지고_간다(cur):
+    # 시장만 바뀌는데 관리종목이 풀린 것으로 남으면 안 된다.
+    # 이 둘의 출처는 키움이라 KRX 스냅샷에서는 받을 수 없다
+    stock_id = make_stock_id("KRX", "999991")
+    before = Stock(
+        stock_id=stock_id,
+        exchange="KRX",
+        code="999991",
+        board="KOSDAQ",
+        name="이전상장테스트",
+    )
+    master.upsert_stocks(cur, [before])
+    master.open_stock_status(
+        cur,
+        [
+            StockStatus(
+                stock_id=stock_id,
+                valid_from=date(2026, 8, 25),
+                board="KOSDAQ",
+                is_managed=True,
+                is_suspended=True,
+            )
+        ],
+    )
+
+    moved = replace(before, board="KOSPI")
+    changes = Changes(listed=[], delisted=[], moved=[stock_id], relisted=[])
+    apply(cur, date(2026, 8, 29), [moved], changes)
+
+    opened = master.open_statuses(cur)
+    assert opened[stock_id] == (date(2026, 8, 29), True, True)

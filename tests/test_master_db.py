@@ -4,34 +4,15 @@ from dataclasses import replace
 from datetime import date
 from decimal import Decimal
 
-import psycopg
 import pytest
 
 from common.db import master
-from common.db.conn import load_database_url
 from common.db.events import log_event
 from common.db.models import Account, Holiday, Source, Stock, StockStatus, make_stock_id
 from common.types import StockState
 
 TEST_CODE = "999990"
 TEST_STOCK_ID = make_stock_id("KRX", TEST_CODE)
-
-
-@pytest.fixture
-def cur():
-    """트랜잭션을 열고 테스트가 끝나면 롤백한다. DB 에 흔적을 남기지 않는다."""
-    try:
-        url = load_database_url()
-    except RuntimeError:
-        pytest.skip("DATABASE_URL 이 없어 DB 통합 테스트를 건너뜁니다")
-
-    conn = psycopg.connect(url)
-    try:
-        with conn.cursor() as c:
-            yield c
-    finally:
-        conn.rollback()
-        conn.close()
 
 
 def make_test_indicator(cur, code: str = "TEST_IND") -> str:
@@ -472,7 +453,6 @@ def test_기준일_이전의_최신_지표값을_찾는다(cur):
 
 
 def test_모르는_metric_은_거부한다(cur):
-    import pytest
 
     from common.db.regime import value_as_of
 

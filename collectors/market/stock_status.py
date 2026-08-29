@@ -52,6 +52,9 @@ def detect(incoming: list[Stock], known: dict[str, str], delisted: set[str]) -> 
 
 def apply(cur, day: date, incoming: list[Stock], changes: Changes) -> None:
     """감지한 변경을 stock(현재값)과 stock_status(이력)에 함께 쓴다."""
+    # 이력을 끊기 전에 읽는다. 끊고 나면 열린 행이 없어 플래그를 못 가져온다
+    flags = {sid: (row[1], row[2]) for sid, row in master.open_statuses(cur).items()}
+
     master.upsert_stocks(cur, incoming)
 
     # 이전상장은 이력을 끊고 새 시장으로 다시 연다. 끊어야 open_stock_status 가 연다
@@ -70,7 +73,15 @@ def apply(cur, day: date, incoming: list[Stock], changes: Changes) -> None:
     master.open_stock_status(
         cur,
         [
-            StockStatus(stock_id=sid, valid_from=day, board=boards[sid])
+            StockStatus(
+                stock_id=sid,
+                valid_from=day,
+                board=boards[sid],
+                # 이전상장은 시장만 바뀐다. 플래그를 기본값으로 열면 관리종목이
+                # 풀린 것으로 남는다. 이 둘의 출처는 키움이라 여기서 못 받는다
+                is_managed=flags.get(sid, (False, False))[0],
+                is_suspended=flags.get(sid, (False, False))[1],
+            )
             for sid in opening
         ],
     )
