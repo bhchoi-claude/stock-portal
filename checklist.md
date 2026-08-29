@@ -65,17 +65,14 @@
 
 인증키 세 개는 모두 들어갔다. 남은 것은 systemd 와 정리뿐이다.
 
-- [ ] **일 1회 유닛 갱신** — 지표 수집·국면 판정이 추가됐다
+- [ ] **일 1회 유닛 갱신** — 설치본에 지표 수집·국면 판정이 빠져 있다.
+      확인 결과 `ExecStart` 가 `daily` 한 줄뿐이다
 
       sudo cp ~/stock-portal/deploy/stock-portal-daily.service /etc/systemd/system/
       sudo systemctl daemon-reload
 
-- [ ] **키움 수집 타이머 등록** — 파티션·분봉·수급
-
-      sudo cp ~/stock-portal/deploy/stock-portal-kiwoom.service /etc/systemd/system/
-      sudo cp ~/stock-portal/deploy/stock-portal-kiwoom.timer /etc/systemd/system/
-      sudo systemctl daemon-reload
-      sudo systemctl enable --now stock-portal-kiwoom.timer
+- [x] 키움 수집 타이머 등록 (2026-08-29) — enabled+active, 다음 실행 08-31 16:10.
+      설치본이 저장소와 같다
 
 - [ ] **`.env` 의 중복된 `DART_API_KEY=` 빈 줄 삭제** — 지금은 파서가 나중 줄을
       써서 동작하지만 순서가 바뀌면 조용히 빈 값이 된다
