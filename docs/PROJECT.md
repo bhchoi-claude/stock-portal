@@ -64,7 +64,13 @@ Cloudflare Tunnel + Zero Trust Access를 추가한다. 지금은 구현하지 �
 |---|---|---|
 | Nginx | 리버스 프록시 | 80 |
 | PostgreSQL | DB | 5432 (localhost only) |
-| 리치프랜즈랩 | 별도 서비스 | 5000 |
+| 리치프랜즈랩 | 별도 서비스 | 미정 (Phase 11) |
+| `portal` | 웹 서버 | 8001 (localhost only) |
+
+이 서버에는 도커 컨테이너가 먼저 자리를 잡고 있다 (2026-08-29 실측).
+8000 은 무한매수, 5000 은 kavita, 9000 은 portainer 다.
+포털을 8001 로 정한 이유이고, 리치프랜즈랩의 5000 도 Phase 11 에서 다시
+정해야 한다.
 
 ### 구조도
 
@@ -74,7 +80,7 @@ Cloudflare Tunnel + Zero Trust Access를 추가한다. 지금은 구현하지 �
                     [Nginx :80]
                        │
               ┌────────┴────────┐
-         /  → portal:8000    /lab → 리치프랜즈랩:5000
+         /  → portal:8001    /lab → 리치프랜즈랩 (Phase 11)
                        │
                  [PostgreSQL]
                   ├ portal_db

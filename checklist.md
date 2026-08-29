@@ -69,8 +69,10 @@
 
 ## 사용자 조치 필요
 
-- [ ] 서버에 `pip install -r requirements.txt` (Flask·gunicorn 추가됨)
-- [ ] Nginx 설치·설정, `stock-portal-web.service` 등록
+- [x] 서버에 `pip install -r requirements.txt` (2026-08-29) — 전체 265건 통과
+- [x] `stock-portal-web.service` 등록 (2026-08-29)
+- [ ] 유닛 갱신 — 포트를 8001 로 고쳤다. 서버에 다시 복사해야 한다
+- [ ] Nginx 설치·설정
 - [ ] 휴대폰에서 Tailscale 접속 확인
 
 ## 08-31 에 확인할 것 (Phase 2 에서 이월)

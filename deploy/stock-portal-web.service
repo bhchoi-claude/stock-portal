@@ -13,9 +13,10 @@ WorkingDirectory=/home/bh-server/stock-portal
 Restart=always
 RestartSec=3
 
-# 개발 서버로 띄우지 않는다. 워커 2개면 사용자 한 명에게 충분하다
+# 개발 서버로 띄우지 않는다. 워커 2개면 사용자 한 명에게 충분하다.
+# 8000 은 무한매수 컨테이너가 쓰고 있어 8001 이다 (2026-08-29 실측)
 ExecStart=/home/bh-server/stock-portal/.venv/bin/gunicorn \
-    --workers 2 --bind 127.0.0.1:8000 \
+    --workers 2 --bind 127.0.0.1:8001 \
     --access-logfile - --error-logfile - \
     "portal.app:create_app()"
 

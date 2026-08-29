@@ -60,11 +60,14 @@ KRX 일봉은 다음 날 공개되지만 키움 분봉·수급은 당일 바로 
 
 상시 프로세스다. 타이머가 아니라 `multi-user.target` 에 물린다.
 
+**포트는 8001 이다.** 문서가 적어둔 8000 은 무한매수 컨테이너가 쓰고 있다.
+`sudo ss -ltnp` 로 확인하고 정했다 (2026-08-29).
+
 ```bash
 sudo cp deploy/stock-portal-web.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now stock-portal-web.service
-curl -s localhost:8000/api/processes | head
+curl -s localhost:8001/api/processes | head
 ```
 
 Flask 와 gunicorn 이 새로 필요하다. 먼저 설치한다.
