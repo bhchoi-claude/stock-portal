@@ -24,8 +24,8 @@
           <td>{{ r.trade_date }}</td>
           <td>{{ m.regime_badge(r.regime) }}{{ ' 수동' if r.is_override else '' }}</td>
           <td class="right">{{ r.score | num }}</td>
-          <td class="right">{{ r.kospi_return | pct }}</td>
-          <td class="right">{{ r.kosdaq_return | pct }}</td>
+          <td class="right">{{ r.kospi_return | percent }}</td>
+          <td class="right">{{ r.kosdaq_return | percent }}</td>
           <td class="dim">{{ r.rule_version }}</td>
         </tr>
         {% else %}

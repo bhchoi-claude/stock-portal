@@ -488,11 +488,14 @@ CREATE TABLE market_regime (
     rule_version    TEXT NOT NULL,           -- 적용된 규칙 파일 버전
     is_override     BOOLEAN NOT NULL DEFAULT FALSE,
     override_reason TEXT,
-    kospi_return    NUMERIC(10,4),           -- 당일 KOSPI 등락 (익일 채움)
-    kosdaq_return   NUMERIC(10,4),
+    kospi_return    NUMERIC(10,4),           -- 당일 KOSPI 등락률(%). 익일 채움
+    kosdaq_return   NUMERIC(10,4),           -- 같은 단위(%)
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
+
+**단위는 퍼센트다.** `indicator_value.change_rate` 는 비율이라 서로 다르다.
+한 화면에 함께 놓으면 100배 틀린다 (2026-08-29 에 그렇게 틀렸다).
 
 `kospi_return`은 판정 다음 날 채운다. 이것이 있어야 나중에 "위험 판정일의
 실제 시장 결과가 어땠는가"를 검증할 수 있다.

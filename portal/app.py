@@ -28,7 +28,8 @@ def create_app() -> Flask:
     app.register_error_handler(HTTPException, _as_json_if_api)
     app.add_template_filter(kst, "kst")
     app.add_template_filter(num, "num")
-    app.add_template_filter(pct, "pct")
+    app.add_template_filter(ratio_pct, "ratio_pct")
+    app.add_template_filter(percent, "percent")
     return app
 
 
@@ -47,11 +48,26 @@ def num(value: str | None) -> str:
     return text.rstrip("0").rstrip(".") if "." in text else text
 
 
-def pct(value: str | None) -> str:
-    """변화율을 백분율로 보여준다."""
+def ratio_pct(value: str | None) -> str:
+    """비율을 백분율로 보여준다. 0.0123 이 +1.23% 다.
+
+    indicator_value.change_rate 가 이 단위다.
+    """
     if value is None:
         return "-"
     return f"{Decimal(value) * 100:+.2f}%"
+
+
+def percent(value: str | None) -> str:
+    """이미 백분율인 값에 부호와 % 만 붙인다. 1.23 이 +1.23% 다.
+
+    market_regime.kospi_return 이 이 단위다. 수집기가 넣을 때 이미 100 을
+    곱한다. 여기서 또 곱해 등락률이 -178% 로 나왔다 (2026-08-29).
+    두 단위가 한 화면에 있으므로 필터 이름으로 갈라둔다.
+    """
+    if value is None:
+        return "-"
+    return f"{Decimal(value):+.2f}%"
 
 
 def _as_json_if_api(error: HTTPException):

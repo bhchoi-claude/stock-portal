@@ -6,7 +6,7 @@ import pytest
 
 from common.db.heartbeat import ProcessState
 from portal import queries
-from portal.app import create_app, kst, num, pct
+from portal.app import create_app, kst, num, percent, ratio_pct
 
 
 @pytest.fixture
@@ -161,10 +161,16 @@ def test_filters():
     assert num("15.200000") == "15.2"
     assert num("1234567.000000") == "1,234,567"
     assert num(None) == "-"
-    assert pct("-0.0250") == "-2.50%"
-    assert pct(None) == "-"
     assert kst("2026-08-29T10:00:00+00:00") == "08-29 19:00"
     assert kst(None) == "-"
+
+
+def test_percent_and_ratio_are_different_units():
+    """change_rate 는 비율, kospi_return 은 이미 퍼센트다. 섞으면 100배 틀린다."""
+    assert ratio_pct("-0.0250") == "-2.50%"
+    assert percent("-1.7865") == "-1.79%"
+    assert ratio_pct(None) == "-"
+    assert percent(None) == "-"
 
 
 def test_num_keeps_decimal_exact():

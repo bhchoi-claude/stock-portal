@@ -54,7 +54,7 @@
       <tr>
         <td>{{ i.name }}<span class="dim"> {{ i.unit or '' }}</span></td>
         <td class="right">{{ i.value | num }}</td>
-        <td class="right">{{ i.change_rate | pct }}</td>
+        <td class="right">{{ i.change_rate | ratio_pct }}</td>
         <td class="dim">{{ i.layer }}{{ '' if i.use_in_regime else ' (판정 제외)' }}</td>
         <td class="dim">{{ i.period_date or '-' }}</td>
       </tr>
