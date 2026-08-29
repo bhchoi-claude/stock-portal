@@ -1,81 +1,77 @@
-# checklist.md — Phase 2 완료 (2026-08-29), Phase 3 코드 작업 완료
+# checklist.md — Phase 4 포털 셸 (읽기 전용)
 
-> **Phase 2 를 닫았다.** 권리락 미감지 13종목은 남긴 채로 닫기로 했다
-> (승인 사항). 08-31 에 관측할 항목 둘이 아래 '이월' 에 있다.
-
-> Phase 1·2 체크리스트는 커밋 `2227f15` 이전 이력에 있다.
+> Phase 2·3 체크리스트는 커밋 `c383c65` 이전 이력에 있다.
 > 완료 요약은 `docs/ROADMAP.md` 진행 현황 참조.
 
 ---
 
-## 실측으로 확인된 것 (2026-08-29)
+## 시작 전에 정한 것 (2026-08-29)
 
-수집기를 고칠 때 이 전제를 다시 확인하지 않아도 된다.
+사용자 확인을 받은 네 가지다. 이유는 `context-notes.md` 에 있다.
 
-- **`indicator` 표가 지표의 정본 단위를 정의한다.** 수집기를 만들기 전에 읽는다.
-  억원·%를 원·달러로 넣어 두 번 틀렸다
-- data.go.kr 서비스키는 **Encoding 형태**로 온다. `unquote` 후 인코딩해야 한다.
-  그대로 `urlencode` 하면 이중 인코딩으로 403 이다
-- 금융투자협회는 JSON, **관세청은 XML 만** 준다
-- 관세청은 조회 구간이 **1년**이다. 응답 마지막에 `총계` 행이 붙는다
-- 품목별 수출입실적은 10자리 세부코드로 쪼개져 와서 합산이 필요하다
-- 키움 지수(`ka20006`)는 **100배**로 온다. `ka20003` 현재가와 대조해 확정했다
-- 키움 분봉 가격의 부호는 벗기고, **수급 값의 부호는 벗기면 안 된다.**
-  전자는 전일대비 방향 표시이고 후자는 순매도라는 뜻이다
-- KRX 지수 API 이용신청은 필요 없다. 키움 `ka20006` 에 KOSPI·KOSDAQ·변동성지수가
-  600건씩 있다
+- 프레임워크는 **Flask**. 조회 API + 정적 화면이라 비동기가 필요 없다
+- 화면은 **최소 HTML 을 직접 쓴다**. Claude Design 산출물이 나오면 템플릿만 바꾼다
+- 프로세스 상태는 **`heartbeat` 테이블**로 간다. 쓰는 코드가 없어 이번에 만든다
+- `heartbeat.process_name` 은 **모듈별**. `event_log` 의 `process_name` 과 같은 이름을 쓴다
+- `GET /api/events` 를 추가한다. `INTERFACES.md` 10장 표에 없던 것이라 문서도 고친다
 
-## 플러그인 구조
+## heartbeat
 
-- [x] `Collector` ABC + `CollectResult` / `IndicatorRecord` (`INTERFACES.md` 6장)
-- [x] 수집기 실행기 — `collectors/market/indicator_runner.py`
-- [x] 실패를 `event_log` 에 남기고 `source.last_success_at` 을 갱신한다
-- [x] 반복 실패 시 알림 — 관찰 창을 수집기 주기에 맞춘다.
-      '1시간' 을 그대로 쓰면 하루 한 번 도는 수집기는 영원히 알리지 못한다
-- [x] `indicator_value` 적재 + 전기 대비 `change_rate` 계산
+- [x] `common/db/heartbeat.py` — upsert / 목록 조회
+- [x] `run_with_heartbeat()` — 시작 `running`, 종료코드 0 이면 `idle`, 아니면 `error`
+- [x] 수집기 7종 진입점에 연결 (`daily`, `indicators`, `regime`, `partitions`,
+      `price_minute`, `trading_flow`, `stock_flags`)
+- [x] 테스트 — 성공·실패·예외 세 경로가 각각 맞는 상태로 남는가
 
-## 지표 수집기 (8종)
+## 조회 함수 (`common/db/`)
 
-- [x] `VKOSPI` / `KOSPI_MA200_GAP` — 키움 `ka20006`. 각 254건
-- [x] `FOREIGN_NET` — `trading_flow` 집계. 상장 2849종목, 커버리지 98.9% 이상
-- [x] `DEPOSIT` / `CREDIT_BALANCE` — 금융투자협회. 각 252건
-- [x] `USDKRW` — ECOS `731Y001`/`0000001`. 254건
-- [x] `EXPORT_YOY` / `EXPORT_SEMI_YOY` — 관세청. 전년 동월 증가율
+- [x] `regime.py` — 현재 국면, 판정 이력
+- [x] `indicators.py` — 지표 현황 스냅샷 (정의 + 최신값)
+- [x] `events.py` — 최근 이벤트
+- [x] `heartbeat.py` — 프로세스 상태
 
-## 국면 판정
+## 포털
 
-- [x] `config/regime_rules.yaml`
-- [x] `RegimeEngine` — 결측 시 남은 가중치로 정규화. 테스트로 고정
-- [x] 일 1회 판정 → `market_regime` 적재
-- [x] 익일 `kospi_return` / `kosdaq_return` 채우기
-- [x] 국면 전환 시 알림 — 같은 국면 유지 시 무음
-- [x] 임계값 재조정 (2026-08-29) — 10/90 분위수. 포화 85~99% → 20~25%.
-      `rule_version` 을 올려 이전 판정과 구분된다
-- [ ] **`KOSPI_MA200_GAP` 도메인 검토** — 분위수를 그대로 쓰면 이격도 67% 가
-      '안전' 이 된다. 실제로는 과열 신호다. 과열과 과랭을 함께 위험으로 보려면
-      선형이 아닌 규칙이 필요하다. 전략 판단이라 임의로 정하지 않았다
+- [x] `portal/` Flask 앱 (`create_app`)
+- [x] `GET /api/regime/current`
+- [x] `GET /api/regime/history?from=&to=`
+- [x] `GET /api/indicators`
+- [x] `GET /api/processes`
+- [x] `GET /api/events?level=&limit=`
+- [x] `GET /api/dashboard` — 매매 항목은 빈 채로 둔다 (Phase 8 이후)
+- [x] `config/portal.yaml` — 프로세스 목록, 정지 판정 임계 시간, 조회 기본 구간
 
-## Phase 3 완료 기준
+## 화면
 
-- [x] 지표 8종이 매일 자동 수집됨 — 1,387건
-- [x] 국면 판정이 매일 기록되고 이력이 쌓임
-- [x] 소스 하나를 강제로 실패시켜도 나머지가 정상 동작 — 5종 중 2종을
-      강제 실패시켜 나머지 3종이 정상 적재하는 것을 확인
+- [x] 대시보드 (부분) — 국면, 지표 요약, 프로세스 상태
+- [x] 시장분석 — 지표 8종, 국면 판정 이력
+- [x] 운영·로그 (기초) — 프로세스 상태, 최근 에러
+- [x] 모바일 폭에서 읽히는가 — 375px 표본 데이터로 확인. 두 번 고쳤다.
+      지표는 값을 앞 열로 옮기고, 에러는 표를 버리고 두 줄 목록으로 바꿨다
+
+## 배포
+
+- [x] `deploy/stock-portal-web.service` — 상시 프로세스 (gunicorn)
+- [x] `deploy/nginx-stock-portal.conf` — `/` → `portal:8000`
+- [x] `deploy/README.md` 설치 절차
+
+## 문서
+
+- [x] `INTERFACES.md` 10장에 `/api/events` 추가
+- [x] `ROADMAP.md` 진행 현황 표 갱신 — Phase 2·3 이 '미시작' 으로 남아 있었다
+
+## Phase 4 완료 기준
+
+- [ ] Tailscale 로 휴대폰에서 접속해 시장분석 화면이 보인다
+- [ ] 수집기 상태가 화면에 반영된다
 
 ---
 
 ## 사용자 조치 필요
 
-- [x] `stock-portal-kiwoom.service` 갱신 (2026-08-29) — `stock_flags` 반영.
-      저장소와 동일하고 systemd 가 `ExecStart` 4줄을 모두 읽었다.
-      타이머 enabled+active, 다음 실행 08-31 16:10
-
-- [x] 일 1회 유닛 갱신 (2026-08-29) — `ExecStart` 4줄 반영. 저장소와 동일함을 확인
-- [x] 키움 수집 타이머 등록 (2026-08-29) — enabled+active, 다음 실행 08-31 16:10
-- [x] `.env` 중복 `DART_API_KEY=` 줄 삭제 (2026-08-29) — 1줄만 남고 40자 정상
-- [x] 재부팅 후 자동 기동 확인 (2026-08-29) — 재부팅 후 두 타이머가
-      `enabled`+`active` 로 올라왔고 다음 실행 시각도 그대로다.
-      postgresql 정상, 실패 유닛 0개, 적재량 재부팅 전과 일치
+- [ ] 서버에 `pip install -r requirements.txt` (Flask·gunicorn 추가됨)
+- [ ] Nginx 설치·설정, `stock-portal-web.service` 등록
+- [ ] 휴대폰에서 Tailscale 접속 확인
 
 ## 08-31 에 확인할 것 (Phase 2 에서 이월)
 
@@ -85,29 +81,13 @@
 - [ ] `stock_flags` 플래그 생존 — 데일리 19:00 에 KRX 마스터가 돈 뒤에도
       관리종목·거래정지가 남는지. DB 테스트로는 확인했다
 
-## Phase 2 에서 받아들이고 닫은 것
+## 남은 것 (다른 단계로 넘김)
 
-- 권리락 미감지 13종목 — 무상증자·유상증자는 권리락일과 신주 상장일이
-  갈라져 '주식수 변화 + 가격 급변' 으로는 못 잡는다. 별도 출처가 필요하다
-- 인적분할 4종목 — `irdsSttus` 에 안 잡힌다. 주요사항보고서 파싱이 필요하다
-- 임의 비율 감자 3건 — 단순 분수 규칙(분모 ≤ 4)이 좁아 놓친다.
-  넓히면 인적분할·자기주식 소각이 섞인다
-
-셋 다 `adjusts_price = FALSE` 라 **잘못된 조정은 일어나지 않는다.**
-해당 종목의 시계열만 끊긴 채로 남는다.
-
-## 남은 수집 항목 (Phase 2 범위 밖으로 넘김)
-
-- [x] 주식수 증가분 구분 (2026-08-29) — 58건 전부 분류.
-      조정 대상 359 → 411건, 가격 불연속 477 → 81건.
-      DART 우선, 근거가 없으면 비율의 모양으로. `source` 에 남긴다
-- [x] 불연속 측정 기준 (2026-08-29) — 거래정지 반복 종가와 정리매매를
-      결함으로 세고 있었다. `adj_check.py` 로 옮겼다. 81 -> 연속 13건
-- [ ] 현금배당 수집 — `alotMatter` 로 가능하다. 연 단위라 배당락일이 아니라
-      결산기준일로 들어간다. `adjusts_price=FALSE` 라 조정계수에는 영향 없다
-- [x] `is_managed` / `is_suspended` 출처 (2026-08-29) — 키움 `ka10099`.
-      `stock_flags` 수집기로 분리했다. `auditInfo` 와 `state` 를 함께 봐야 한다.
-      관리종목 165, 거래정지 137 적재. 과거는 복구할 수 없다
+- [ ] `KOSPI_MA200_GAP` 도메인 검토 — 이격도 67% 가 '안전' 이 된다.
+      과열과 과랭을 함께 위험으로 보려면 선형이 아닌 규칙이 필요하다.
+      전략 판단이라 임의로 정하지 않는다 (Phase 7)
+- [ ] 현금배당 수집 — `alotMatter` 로 가능하다. `adjusts_price=FALSE` 라
+      조정계수에는 영향 없다
 
 ## 건드리지 않은 것
 

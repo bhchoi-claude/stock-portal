@@ -1,0 +1,26 @@
+[Unit]
+Description=stock-portal 포털 웹 서버
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+
+# 포털이 죽어도 매매 엔진은 영향받지 않는다 (PROJECT.md 8.1).
+# 반대로 포털은 언제든 다시 띄워도 된다
+Restart=always
+RestartSec=3
+
+# 개발 서버로 띄우지 않는다. 워커 2개면 사용자 한 명에게 충분하다
+ExecStart=/home/bh-server/stock-portal/.venv/bin/gunicorn \
+    --workers 2 --bind 127.0.0.1:8000 \
+    --access-logfile - --error-logfile - \
+    "portal.app:create_app()"
+
+StandardOutput=append:/home/bh-server/stock-portal/logs/portal.log
+StandardError=append:/home/bh-server/stock-portal/logs/portal.log
+
+[Install]
+WantedBy=multi-user.target

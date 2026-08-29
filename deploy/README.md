@@ -55,3 +55,46 @@ KRX 일봉은 다음 날 공개되지만 키움 분봉·수급은 당일 바로 
 
 관심종목 200개 기준 분봉 약 4분, 수급 약 4분이다. 키움 유량이 1 이라
 종목당 1초가 하한이다.
+
+## 포털 웹 서버
+
+상시 프로세스다. 타이머가 아니라 `multi-user.target` 에 물린다.
+
+```bash
+sudo cp deploy/stock-portal-web.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now stock-portal-web.service
+curl -s localhost:8000/api/processes | head
+```
+
+Flask 와 gunicorn 이 새로 필요하다. 먼저 설치한다.
+
+```bash
+.venv/bin/pip install -r requirements.txt
+```
+
+### Nginx
+
+```bash
+sudo cp deploy/nginx-stock-portal.conf /etc/nginx/sites-available/stock-portal
+sudo ln -sf /etc/nginx/sites-available/stock-portal /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+휴대폰에서 Tailscale 주소로 접속한다. `http://<tailscale-ip>/` 이다.
+
+### 화면과 API
+
+| 경로 | 내용 |
+|---|---|
+| `/` | 대시보드 (국면·지표·프로세스. 매매 항목은 Phase 8 부터) |
+| `/market` | 시장분석 (지표 8종, 국면 판정 이력) |
+| `/ops` | 운영·로그 (프로세스 상태, 최근 에러) |
+| `/api/…` | 조회 API (`INTERFACES.md` 10장) |
+
+**조회 전용이다.** 제어 엔드포인트는 엔진이 붙는 Phase 8 에 만든다.
+
+프로세스 상태는 `heartbeat` 표를 읽는다. 표시할 프로세스와 '멈춤' 으로
+볼 시간은 `config/portal.yaml` 에 있다. 목록에 없는 프로세스도 신호가
+있으면 화면에 나온다.

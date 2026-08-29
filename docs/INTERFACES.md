@@ -785,6 +785,7 @@ class TelegramNotifier(Notifier): ...
 | GET | `/api/keywords/surge?date=` | 급등 키워드 |
 | GET | `/api/messages?keyword=&from=` | 원문 조회 |
 | GET | `/api/processes` | heartbeat 상태 |
+| GET | `/api/events?level=&limit=` | 이벤트 로그 (운영·로그 탭의 '에러') |
 | GET | `/api/usage?date=` | API/LLM 사용량 |
 | GET | `/api/backtest/runs` | 백테스트 결과 목록 |
 
