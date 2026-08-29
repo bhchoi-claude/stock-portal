@@ -89,7 +89,10 @@ def update_action_type(
         SET action_type = %s,
             adjusts_price = %s,
             source = 'dart',
-            detail = detail || jsonb_build_object('classified', true, 'dart_style', %s)
+            -- jsonb_build_object 는 파라미터 타입을 추론하지 못한다. 캐스트가 필요하다
+            detail = detail || jsonb_build_object(
+                'classified', true, 'dart_style', %s::text
+            )
         WHERE action_id = %s
         """,
         (action_type, adjusts_price, style, action_id),
