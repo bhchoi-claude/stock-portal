@@ -14,8 +14,10 @@ CODE = "999980"
 STOCK_ID = make_stock_id("KRX", CODE)
 CLOSE_TIME = time(15, 30)
 
-# 5일치. 커서를 가운데 두고 뒤쪽이 새지 않는지 본다
-DAYS = [date(2026, 1, day) for day in (5, 6, 7, 8, 9)]
+# 5일치. 커서를 가운데 두고 뒤쪽이 새지 않는지 본다.
+# **실제 시세가 없는 구간을 쓴다.** 운영 데이터가 있는 날짜를 쓰면
+# 유니버스 단정이 상위 종목들에 밀려 깨진다 (2026-08-30 에 깨졌다)
+DAYS = [date(2019, 1, day) for day in (7, 8, 9, 10, 11)]
 
 
 @pytest.fixture
@@ -29,7 +31,7 @@ def feed(cur):
                 code=CODE,
                 board="KOSPI",
                 name="피드테스트",
-                listed_at=date(2020, 1, 2),
+                listed_at=date(2018, 1, 2),
             )
         ],
     )
@@ -71,7 +73,7 @@ def test_cursor_moves_forward(feed):
 
 def test_now_is_market_close_in_utc(feed):
     """저장과 비교는 UTC 로 한다. 서버 시계가 어디에 있든 같아야 한다."""
-    assert feed.now() == datetime(2026, 1, 7, 6, 30, tzinfo=UTC)
+    assert feed.now() == datetime(2019, 1, 9, 6, 30, tzinfo=UTC)
 
 
 def test_candles_are_adjusted(cur, feed):
