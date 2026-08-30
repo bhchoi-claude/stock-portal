@@ -74,7 +74,7 @@ def main(argv: list[str] | None = None) -> int:
             trades,
             days_per_year=settings["days_per_year"],
         )
-        note = survivorship_note(*delisted_between(cur, days[0], days[-1]), days[0])
+        note = survivorship_note(*delisted_between(cur, days[0], days[-1]))
 
         # 적재는 실행과 같은 트랜잭션이다. 갈라지면 근거 없는 지표가 남는다
         run_id = _save(

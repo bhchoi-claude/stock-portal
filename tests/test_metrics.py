@@ -188,8 +188,19 @@ def test_metrics_fit_the_column_scale():
         assert value is None or -value.as_tuple().exponent == 4
 
 
-def test_survivorship_note_states_both_counts():
-    note = survivorship_note(12, 3, date(2025, 1, 1))
+def test_survivorship_note_reads_right_in_all_three_cases():
+    """센 숫자는 편향의 크기가 아니라 **잡힌 쪽**이다. 그렇게 읽혀야 한다."""
+    partial = survivorship_note(12, 3)
+    assert "12개 중 3개만" in partial
 
-    assert "12" in note and "3" in note
-    assert "생존편향" in note
+    # '6개 중 6개만' 은 말이 안 된다. 잡혔다는 뜻으로 읽혀야 한다
+    whole = survivorship_note(6, 6)
+    assert "6개는 모두" in whole
+    assert "6개만" not in whole
+
+    assert "폐지된 종목이 없다" in survivorship_note(0, 0)
+
+    # 셀 수 없는 쪽이 진짜 문제라는 것을 세 경우 모두 적는다
+    for note in (partial, whole, survivorship_note(0, 0)):
+        assert "생존편향" in note
+        assert "처음부터 데이터에 없다" in note

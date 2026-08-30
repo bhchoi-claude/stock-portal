@@ -122,18 +122,28 @@ def compute(
     )
 
 
-def survivorship_note(delisted: int, with_prices: int, from_date: date) -> str:
+def survivorship_note(delisted: int, with_prices: int) -> str:
     """생존편향 경고 (2026-08-30 승인).
 
     `PROJECT.md` 11장이 이미 경고하지만 문서에만 적어두면 몇 달 뒤 숫자만
     떼어 볼 때 잊는다. **결과 옆에 붙여둔다.**
+
+    **센 숫자는 편향의 크기가 아니다.** 잡힌 쪽이다. 진짜 문제는 수집 시점에
+    이미 폐지돼 `stock` 에조차 없는 종목이고 그것은 셀 방법이 없다. 둘을
+    섞어 적으면 나중에 반대로 읽는다.
     """
+    counted = (
+        "이 구간에 폐지된 종목이 없다"
+        if delisted == 0
+        else f"이 구간에 폐지된 종목 {delisted}개는 모두 일봉이 남아 있다"
+        if delisted == with_prices
+        else f"이 구간에 폐지된 종목 {delisted}개 중 {with_prices}개만 일봉이 남아 있다"
+    )
     return (
-        f"생존편향 경고: 이 구간에 폐지된 종목 {delisted}개 중 "
-        f"{with_prices}개만 일봉이 남아 있다. "
-        f"일봉은 {from_date} 이후에도 살아남은 종목 위주라 "
-        "폐지된 종목의 손실이 결과에 덜 반영돼 있다. "
-        "편향은 없앨 수 없고 숫자를 그만큼 낮춰 봐야 한다."
+        f"생존편향 경고: {counted}. "
+        "다만 일봉은 수집 시점에 살아있던 종목의 것이라, 그 전에 폐지된 종목은 "
+        "처음부터 데이터에 없다. 셀 수 없는 쪽이 남아 있으므로 "
+        "숫자를 그만큼 낮춰 봐야 한다."
     )
 
 
