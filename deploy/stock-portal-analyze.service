@@ -1,0 +1,14 @@
+[Unit]
+Description=stock-portal 정보수집 규칙 분석
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+
+ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.news.analyze
+
+StandardOutput=append:/home/bh-server/stock-portal/logs/news.log
+StandardError=append:/home/bh-server/stock-portal/logs/news.log

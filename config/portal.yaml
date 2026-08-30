@@ -37,6 +37,11 @@ processes:
     label: 텔레그램 수집
     stale_after_minutes: 10
 
+  # 10분마다 도는 배치. 한 번쯤 걸러도 이상하지 않게 여유를 둔다
+  - name: news_analyze
+    label: 정보수집 분석
+    stale_after_minutes: 60
+
 # 목록에 없는 프로세스가 heartbeat 에 나타났을 때 쓴다.
 # 설정에 추가하기 전에도 화면에서 사라지지 않게 한다
 default_stale_after_minutes: 1560   # 26시간

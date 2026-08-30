@@ -74,3 +74,52 @@ def insert_messages(cur: psycopg.Cursor, records: Sequence[RawMessage]) -> int:
         returning=False,
     )
     return cur.rowcount
+
+
+@dataclass(frozen=True)
+class StoredMessage:
+    """적재된 원문 하나. 분석 대상이다."""
+
+    message_id: int
+    content: str
+
+
+def unanalyzed(cur: psycopg.Cursor, limit: int) -> list[StoredMessage]:
+    """아직 분석하지 않은 원문. 오래된 것부터 본다."""
+    cur.execute(
+        "SELECT message_id, content FROM raw_message"
+        " WHERE analyzed_at IS NULL ORDER BY published_at LIMIT %s",
+        (limit,),
+    )
+    return [StoredMessage(*row) for row in cur.fetchall()]
+
+
+def mark_analyzed(
+    cur: psycopg.Cursor,
+    message_ids: Sequence[int],
+    method: str,
+    *,
+    filtered: bool = False,
+) -> int:
+    """분석을 끝냈다고 표시한다. filtered 면 규칙 필터에서 제외된 것이다."""
+    if not message_ids:
+        return 0
+    cur.execute(
+        "UPDATE raw_message SET analyzed_at = NOW(), analysis_method = %s,"
+        " is_filtered = %s WHERE message_id = ANY(%s)",
+        (method, filtered, list(message_ids)),
+    )
+    return cur.rowcount
+
+
+def insert_stock_mentions(cur: psycopg.Cursor, pairs: Sequence[tuple[int, str]]) -> int:
+    """(message_id, stock_id) 를 적재한다. 같은 쌍은 무시한다."""
+    if not pairs:
+        return 0
+    cur.executemany(
+        "INSERT INTO stock_mention (message_id, stock_id) VALUES (%s, %s)"
+        " ON CONFLICT DO NOTHING",
+        list(pairs),
+        returning=False,
+    )
+    return cur.rowcount

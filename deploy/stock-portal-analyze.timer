@@ -1,0 +1,11 @@
+[Unit]
+Description=stock-portal 정보수집 분석 타이머
+
+[Timer]
+# 단건 분석은 하지 않는다. 모아서 처리한다 (INTERFACES.md 7.1).
+# LLM 이 붙는 3단계에서도 이 주기를 그대로 쓴다
+OnCalendar=*:0/10
+Persistent=true
+
+[Install]
+WantedBy=timers.target

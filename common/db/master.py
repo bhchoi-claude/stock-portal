@@ -341,3 +341,28 @@ def count_stocks(cur: psycopg.Cursor, *, listed_only: bool = True) -> int:
     else:
         cur.execute("SELECT COUNT(*) FROM stock")
     return cur.fetchone()[0]
+
+
+def stock_dictionary(
+    cur: psycopg.Cursor, min_name_length: int, excludes: Sequence[str]
+) -> list[tuple[str, str, str]]:
+    """종목명 매칭용 사전. (이름, stock_id, 종목코드).
+
+    우선주와 스팩을 뺀다. 뉴스에서 '삼성전자우' 를 따로 세지 않고,
+    스팩은 이름이 길고 언급될 일이 없다.
+
+    짧은 이름과 일반명사와 겹치는 이름은 오탐을 만든다. 놓치는 것보다
+    잘못 잡는 것이 해롭다. 잘못 잡으면 그 뒤의 집계가 조용히 틀어진다.
+    """
+    cur.execute(
+        """
+        SELECT name, stock_id, code FROM stock
+        WHERE delisted_at IS NULL
+          AND NOT is_preferred AND NOT is_spac
+          AND char_length(name) >= %s
+          AND NOT (name = ANY(%s))
+        ORDER BY name
+        """,
+        (min_name_length, list(excludes)),
+    )
+    return [(row[0], row[1], row[2]) for row in cur.fetchall()]

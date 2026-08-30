@@ -148,3 +148,20 @@ systemd 아래에서는 물을 곳이 없기 때문이다. 5분에 5번 실패�
 
 살아 있는지는 포털 운영·로그 탭에서 본다. 60초마다 신호를 남기므로
 10분 넘게 조용하면 '멈춤' 으로 표시된다.
+
+### 규칙 분석 배치
+
+10분마다 돌며 적재된 원문에서 종목과 키워드를 뽑는다. 아직 LLM 을 쓰지 않는다.
+
+```bash
+sudo cp deploy/stock-portal-analyze.service deploy/stock-portal-analyze.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now stock-portal-analyze.timer
+```
+
+사전을 고친 뒤 다시 분석하려면 표시를 지우고 배치를 돌린다.
+원문은 지우지 않으므로 몇 번이든 다시 할 수 있다.
+
+```sql
+UPDATE raw_message SET analyzed_at = NULL, analysis_method = NULL;
+```
