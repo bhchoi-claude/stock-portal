@@ -40,11 +40,14 @@ MINUTE_INTERVALS = {"1m": "1", "3m": "3", "5m": "5", "10m": "10", "30m": "30"}
 
 CHART_PATH = "/api/dostk/chart"
 INFO_PATH = "/api/dostk/stkinfo"
+ACCOUNT_PATH = "/api/dostk/acnt"
 MINUTE_API = "ka10080"
 QUOTE_API = "ka10001"
 FLOW_API = "ka10059"
 INDEX_API = "ka20006"
 STATE_API = "ka10099"
+DEPOSIT_API = "kt00001"
+BALANCE_API = "kt00018"
 
 # ka10099 의 시장 구분. 이 셋이면 stock 의 전 종목이 덮인다 (2026-08-29 실측).
 # 0 은 ETF·ETN 을 함께 주지만 우리 종목에 없어 그대로 흘려보낸다.
@@ -62,6 +65,15 @@ TIMEOUT = 20.0
 
 # 만료 이 시간 전에 토큰을 새로 받는다
 TOKEN_MARGIN_SEC = 600
+
+
+def to_amount(value: str | None) -> Decimal:
+    """키움 금액은 15자리 제로패딩 문자열이다 (2026-08-30 실측).
+
+    `"000000010000000"` 이 1,000만원이다. `Decimal` 이 앞의 0 과 부호를 그대로
+    받으므로 벗겨낼 것이 없다. 빈 값은 0 으로 본다.
+    """
+    return Decimal(value) if value else Decimal(0)
 
 
 def strip_sign(value: str) -> Decimal:
@@ -369,10 +381,41 @@ class KiwoomBroker(Broker):
         return closes
 
     def get_balance(self, account_id: str) -> Balance:
-        raise NotImplementedError("잔고 조회는 아직 구현하지 않았다.")
+        """예수금은 `kt00001`, 평가·총자산은 `kt00018` 이 준다.
+
+        **한쪽만으로는 안 된다.** `kt00001` 에 평가금액이 없고 `kt00018` 에
+        주문가능금액이 없다. 호출이 둘이지만 주기가 하루 한 번이라 괜찮다.
+
+        계좌번호를 보내지 않는다. **계좌는 앱키·토큰에 묶인다** (2026-08-30
+        실측). 모의투자는 별도 앱키와 도메인을 쓰므로 그 키가 곧 계좌다.
+        """
+        cash = self._call(DEPOSIT_API, ACCOUNT_PATH, {"qry_tp": "1"})
+        holdings = self._call(
+            BALANCE_API, ACCOUNT_PATH, {"qry_tp": "1", "dmst_stex_tp": "KRX"}
+        )
+
+        return Balance(
+            account_id=account_id,
+            deposit=to_amount(cash["entr"]),
+            # **미수를 쓰지 않는다.** 증거금 100% 기준 금액이 현금으로 살 수
+            # 있는 한도다. ord_alow_amt 는 계좌 설정에 따라 미수를 포함할 수
+            # 있어 그대로 쓰면 실계좌에서 미수가 난다
+            available=to_amount(cash["100stk_ord_alow_amt"]),
+            eval_amount=to_amount(holdings["tot_evlt_amt"]),
+            total_asset=to_amount(holdings["prsm_dpst_aset_amt"]),
+        )
 
     def get_positions(self, account_id: str) -> list[Position]:
-        raise NotImplementedError("보유종목 조회는 아직 구현하지 않았다.")
+        """`kt00018` 의 `acnt_evlt_remn_indv_tot` 가 보유종목 배열이다.
+
+        **배열 안의 필드 이름을 아직 확정하지 못했다.** 모의투자 계좌에
+        보유종목이 없어 빈 배열만 봤다 (2026-08-30). 한 종목이라도 담긴 뒤에
+        실측해 채운다. 문서만 보고 필드를 정하면 조용히 틀린 값을 읽는다.
+        """
+        raise NotImplementedError(
+            "보유종목 배열의 필드를 아직 실측하지 못했다."
+            " 모의투자 계좌에 종목을 담고 probe 로 확인한 뒤 구현한다."
+        )
 
     # ---- 주문 (Phase 8) ----
 

@@ -58,17 +58,23 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
 
 
 def _mask(value: Any) -> Any:
-    """계좌번호가 담긴 키를 가린다. 응답을 그대로 붙여넣어도 새지 않게."""
+    """계좌번호가 담긴 키를 가린다. 응답을 그대로 붙여넣어도 새지 않게.
+
+    **문자열만 가린다.** `acnt_evlt_remn_indv_tot` 처럼 이름에 `acnt` 가 들어간
+    보유종목 배열까지 가려서 필드를 못 보는 일이 있었다 (2026-08-30).
+    계좌번호는 문자열이므로 이것으로 충분하다.
+    """
     if isinstance(value, dict):
-        return {
-            key: "***"
-            if any(hint in key.lower() for hint in SECRET_HINTS)
-            else _mask(item)
-            for key, item in value.items()
-        }
+        return {key: _mask_entry(key, item) for key, item in value.items()}
     if isinstance(value, list):
         return [_mask(item) for item in value]
     return value
+
+
+def _mask_entry(key: str, value: Any) -> Any:
+    if isinstance(value, str) and any(hint in key.lower() for hint in SECRET_HINTS):
+        return "***"
+    return _mask(value)
 
 
 if __name__ == "__main__":
