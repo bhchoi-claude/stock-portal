@@ -15,6 +15,11 @@ URL = re.compile(r"https?://\S+")
 # 링크 안의 기사 ID(20260828001046)를 종목코드로 읽지 않으려는 것이다
 CODE = re.compile(r"(?<![0-9])[0-9]{6}(?![0-9])")
 
+# 이름 앞에 이 글자가 붙어 있으면 다른 낱말의 일부다.
+# 한국어에는 띄어쓰기 경계가 없어서 '이닉스' 가 'SK하이닉스' 안에 걸린다.
+# 뒤쪽은 볼 수 없다. '삼성전자가' 의 조사와 구분이 안 되기 때문이다
+BOUNDARY = re.compile(r"[0-9A-Za-z가-힣]")
+
 
 class NewsAnalyzer:
     """규칙 기반 분석. 사전이 커질수록 LLM 호출이 줄어든다 (INTERFACES.md 7장).
@@ -33,6 +38,9 @@ class NewsAnalyzer:
         ad_patterns: Sequence[str],
     ) -> None:
         self.stocks = stocks
+        # 긴 이름부터 본다. 'HD현대일렉트릭' 을 먼저 지워야 'HD현대' 가
+        # 남지 않는다. 둘 다 실제로 언급된 글에서는 둘 다 잡힌다
+        self.stock_names = sorted(stocks, key=len, reverse=True)
         self.codes = codes
         self.keywords = keywords
         self.min_length = min_length
@@ -64,8 +72,17 @@ class NewsAnalyzer:
         """상장사 명단 사전 매칭. LLM 미사용.
 
         종목코드도 함께 본다. 링크를 지운 뒤라서 기사 ID 와 섞이지 않는다.
+
+        잡은 이름은 본문에서 지운다. 긴 이름부터 보므로 짧은 이름이 긴 이름
+        안에 걸리지 않는다.
         """
-        found = {stock_id for name, stock_id in self.stocks.items() if name in content}
+        found = set()
+        rest = content
+        for name in self.stock_names:
+            if _appears(rest, name):
+                found.add(self.stocks[name])
+                rest = rest.replace(name, " ")
+
         for code in CODE.findall(content):
             stock_id = self.codes.get(code)
             if stock_id:
@@ -84,3 +101,17 @@ class NewsAnalyzer:
                 found.add(keyword_id)
                 rest = rest.replace(term, " ")
         return sorted(found), " ".join(rest.split())
+
+
+def _appears(text: str, name: str) -> bool:
+    """낱말 경계를 지키며 찾는다.
+
+    앞에 글자가 붙어 있으면 다른 낱말이다. '펩타이드' 의 '타이드' 를
+    종목으로 세지 않으려는 것이다.
+    """
+    start = 0
+    while (index := text.find(name, start)) != -1:
+        if index == 0 or not BOUNDARY.match(text[index - 1]):
+            return True
+        start = index + 1
+    return False

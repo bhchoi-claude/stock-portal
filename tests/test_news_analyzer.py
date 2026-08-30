@@ -70,3 +70,48 @@ def test_ad_pattern_is_filtered(analyzer):
         [StoredMessage(1, "리딩방 무료 입장"), StoredMessage(2, "반도체 수주 확대")]
     )
     assert [m.message_id for m in kept] == [2]
+
+
+def test_shorter_name_inside_longer_word_is_not_a_stock():
+    """'이닉스' 는 실재하는 종목이지만 'SK하이닉스' 안의 것은 아니다.
+
+    제외 목록으로 막으면 진짜 언급까지 잃는다. 규칙으로 가른다.
+    """
+    analyzer = _with({"이닉스": "KRX:226360", "SK하이닉스": "KRX:000660"})
+    assert analyzer.match_stocks("SK하이닉스 강세") == ["KRX:000660"]
+    assert analyzer.match_stocks("이닉스 신고가") == ["KRX:226360"]
+
+
+def test_common_word_swallowing_a_name(analyzer):
+    """'펩타이드' 안의 '타이드' 를 종목으로 세지 않는다."""
+    analyzer.stocks["타이드"] = "KRX:999999"
+    analyzer.stock_names = sorted(analyzer.stocks, key=len, reverse=True)
+    assert analyzer.match_stocks("펩타이드 임상 결과") == []
+
+
+def test_prefix_name_inside_longer_name():
+    """'HD현대일렉트릭' 만 있는 글에서 'HD현대' 를 함께 세지 않는다."""
+    analyzer = _with({"HD현대": "KRX:267250", "HD현대일렉트릭": "KRX:267260"})
+    assert analyzer.match_stocks("HD현대일렉트릭 수주") == ["KRX:267260"]
+    # 둘 다 실제로 나오면 둘 다 잡는다
+    assert analyzer.match_stocks("HD현대일렉트릭과 HD현대 동반 상승") == [
+        "KRX:267250",
+        "KRX:267260",
+    ]
+
+
+def test_particle_after_name_still_matches():
+    """'삼성전자가' 의 조사는 경계로 보지 않는다. 뒤쪽은 검사할 수 없다."""
+    analyzer = _with({"삼성전자": "KRX:005930"})
+    assert analyzer.match_stocks("삼성전자가 반등했다") == ["KRX:005930"]
+
+
+def _with(stocks: dict[str, str]) -> NewsAnalyzer:
+    return NewsAnalyzer(
+        stocks=stocks,
+        codes={},
+        keywords={},
+        min_length=4,
+        footers=[],
+        ad_patterns=[],
+    )
