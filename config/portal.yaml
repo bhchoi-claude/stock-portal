@@ -1,19 +1,19 @@
 # 포털 화면·조회 파라미터. 숫자를 코드에 직접 쓰지 않는다
 
-# 화면에 띄울 프로세스. 마지막 생존 신호가 stale_after_hours 를 넘으면
-# 멈춘 것으로 본다. 상시 프로세스가 아니라 하루 한 번 도는 배치라
-# 임계값이 하루보다 길다
+# 화면에 띄울 프로세스. 마지막 생존 신호가 stale_after_minutes 를 넘으면
+# 멈춘 것으로 본다. 단위가 분인 이유는 상시 프로세스 때문이다.
+# 하루 한 번 도는 배치는 하루보다 긴 값을, 상시 프로세스는 몇 분을 쓴다
 processes:
   # 일 1회 유닛 (매일 19:00)
   - name: daily
     label: 일봉·조정 갱신
-    stale_after_hours: 26
+    stale_after_minutes: 1560   # 26시간
   - name: indicators
     label: 시장지표 수집
-    stale_after_hours: 26
+    stale_after_minutes: 1560   # 26시간
   - name: regime
     label: 국면 판정
-    stale_after_hours: 26
+    stale_after_minutes: 1560   # 26시간
 
   # 키움 유닛 (평일 16:10). 금요일에 돌고 월요일까지 72시간이 빈다.
   # 주말마다 화면이 빨개지지 않도록 그보다 길게 잡는다.
@@ -21,20 +21,25 @@ processes:
   # '아예 돌지 않았다' 만 잡는다
   - name: partitions
     label: 분봉 파티션
-    stale_after_hours: 74
+    stale_after_minutes: 4440   # 74시간
   - name: price_minute
     label: 분봉 수집
-    stale_after_hours: 74
+    stale_after_minutes: 4440   # 74시간
   - name: trading_flow
     label: 수급 수집
-    stale_after_hours: 74
+    stale_after_minutes: 4440   # 74시간
   - name: stock_flags
     label: 종목 상태 플래그
-    stale_after_hours: 74
+    stale_after_minutes: 4440   # 74시간
+
+  # 상시 프로세스. 60초마다 신호를 남기므로 몇 분만 조용해도 이상하다
+  - name: telegram
+    label: 텔레그램 수집
+    stale_after_minutes: 10
 
 # 목록에 없는 프로세스가 heartbeat 에 나타났을 때 쓴다.
 # 설정에 추가하기 전에도 화면에서 사라지지 않게 한다
-default_stale_after_hours: 26
+default_stale_after_minutes: 1560   # 26시간
 
 # 국면 이력 조회 기본 구간
 regime_history_days: 90

@@ -30,6 +30,7 @@ def create_app() -> Flask:
     app.add_template_filter(num, "num")
     app.add_template_filter(ratio_pct, "ratio_pct")
     app.add_template_filter(percent, "percent")
+    app.add_template_filter(duration, "duration")
     return app
 
 
@@ -68,6 +69,13 @@ def percent(value: str | None) -> str:
     if value is None:
         return "-"
     return f"{Decimal(value):+.2f}%"
+
+
+def duration(minutes: int | None) -> str:
+    """분을 사람이 읽는 단위로. 배치는 시간, 상시 프로세스는 분이다."""
+    if minutes is None:
+        return "-"
+    return f"{minutes // 60}시간" if minutes >= 60 else f"{minutes}분"
 
 
 def _as_json_if_api(error: HTTPException):

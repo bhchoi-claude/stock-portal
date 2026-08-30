@@ -115,3 +115,11 @@ indicators:
   # ECOS 원달러 환율
   ecos_fx_stat: "731Y001"
   ecos_fx_item: "0000001"
+
+news:
+  # 처음 붙는 채널에서 받아올 과거 메시지 수. 그 뒤로는 마지막으로 받은
+  # 번호 이후를 전부 따라잡으므로 이 값과 무관하다
+  catch_up_limit: 200
+
+  # 상시 프로세스라 살아 있다는 신호를 주기적으로 남긴다(초)
+  heartbeat_sec: 60

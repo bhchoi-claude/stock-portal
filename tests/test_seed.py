@@ -54,7 +54,13 @@ def test_커밋된_소스_파일이_모델로_변환된다():
     config = yaml.safe_load((CONFIG_DIR / "sources.yaml").read_text(encoding="utf-8"))
     sources = build_sources(config)
 
-    assert [(s.kind, s.identifier) for s in sources] == [("dart", "dart")]
+    assert ("dart", "dart") in [(s.kind, s.identifier) for s in sources]
+
+    # 텔레그램 식별자는 채널 숫자 ID 다. @사용자명은 바뀔 수 있어 쓰지 않는다
+    channels = [s for s in sources if s.kind == "telegram"]
+    assert channels
+    assert all(s.identifier.isdigit() for s in channels)
+    assert all(s.weight == Decimal("1.0") for s in channels)
 
 
 def test_빈_설정은_빈_목록이다():

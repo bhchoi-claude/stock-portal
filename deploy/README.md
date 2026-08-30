@@ -101,3 +101,35 @@ sudo nginx -t && sudo systemctl reload nginx
 프로세스 상태는 `heartbeat` 표를 읽는다. 표시할 프로세스와 '멈춤' 으로
 볼 시간은 `config/portal.yaml` 에 있다. 목록에 없는 프로세스도 신호가
 있으면 화면에 나온다.
+
+## 텔레그램 수집 (Phase 5)
+
+상시 프로세스다. 먼저 `.env` 에 `TELEGRAM_API_ID`, `TELEGRAM_API_HASH` 를 넣고
+**세션을 만든다.** 전화번호로 코드를 받는 절차라 사람이 직접 한다.
+
+```bash
+.venv/bin/python -m collectors.news.login
+```
+
+찍히는 채널 목록에서 수집할 채널의 숫자 ID 를 `config/sources.yaml` 에 넣고
+적재한다.
+
+```bash
+.venv/bin/python -m common.db.seed
+```
+
+그 다음 서비스를 올린다.
+
+```bash
+sudo cp deploy/stock-portal-news.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now stock-portal-news.service
+tail -f logs/news.log
+```
+
+**세션이 없거나 만료되면 서비스가 뜨지 않는다.** 로그인을 물어야 하는데
+systemd 아래에서는 물을 곳이 없기 때문이다. 5분에 5번 실패하면 유닛이
+`failed` 로 멈춘다. 그때는 `login` 을 다시 실행하고 서비스를 재시작한다.
+
+살아 있는지는 포털 운영·로그 탭에서 본다. 60초마다 신호를 남기므로
+10분 넘게 조용하면 '멈춤' 으로 표시된다.

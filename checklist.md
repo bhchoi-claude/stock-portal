@@ -15,14 +15,16 @@
 
 ## 1단계 — 텔레그램 수집 (LLM 없음)
 
-- [ ] `source` 에 채널 적재 (사용자 목록 대기)
+- [x] `source` 에 채널 적재 (2026-08-29) — 3개. 급등일보·가치투자클럽·특징주 속보.
+      식별자는 숫자 채널 ID. 가중치는 전부 1.0 으로 시작한다
 - [x] Telethon 로그인 CLI (2026-08-29) — `python -m collectors.news.login`.
       세션 파일은 `.gitignore`, 권한 600. 구독 채널 목록을 함께 찍는다
-- [ ] Telethon 수집 클라이언트 (상시)
-- [ ] `collector-news` 상시 프로세스, 수신 → `raw_message` 적재
-- [ ] 중복 차단 — `content_hash`, `UNIQUE (source_id, content_hash)`
-- [ ] 재시작 복구 — 끊긴 동안의 메시지를 따라잡는다
-- [ ] heartbeat 기록 (상시 프로세스는 주기적으로 남긴다)
+- [x] `collectors/news/telegram.py` — 수신 → `raw_message` 적재 (2026-08-29)
+- [x] 중복 차단 — `content_hash`, `UNIQUE (source_id, content_hash)`
+- [x] 재시작 복구 — 마지막 메시지 번호 뒤를 전부 따라잡는다
+- [x] heartbeat 60초마다 기록. 포털 임계값을 분 단위로 바꿨다
+- [x] `deploy/stock-portal-news.service`
+- [ ] 서버 기동 확인 — 원문이 실제로 쌓이는가
 
 **여기까지가 1차 목표다.** 원문이 쌓이기 시작하면 나머지는 언제든 다시 돌릴 수 있다.
 

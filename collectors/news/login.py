@@ -6,11 +6,9 @@ import sys
 
 from telethon.sync import TelegramClient
 
-from common.env import PROJECT_ROOT, require_env
+from common.env import require_env
 
-# 이 파일에 로그인 자격이 들어간다. 봇 토큰과 달리 재발급으로 무효화할 수
-# 없으므로 git 에 올리지 않고 권한을 600 으로 둔다
-SESSION_PATH = PROJECT_ROOT / "telegram.session"
+from . import SESSION_PATH
 
 
 def main(argv: list[str]) -> int:

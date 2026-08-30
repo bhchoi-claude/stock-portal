@@ -1,0 +1,26 @@
+[Unit]
+Description=stock-portal 텔레그램 수집
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+# 계속 실패하면 포기하고 멈춘다. 무한 재시작은 로그만 채우고 화면에는
+# 살아 있는 것처럼 보인다. 8000 번 포트 사고(2026-08-29)에서 겪었다
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+
+# 상시 프로세스다. 끊기면 다시 붙되 텔레그램을 몰아치지 않도록 여유를 둔다
+Restart=always
+RestartSec=10
+
+ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.news.telegram
+
+StandardOutput=append:/home/bh-server/stock-portal/logs/news.log
+StandardError=append:/home/bh-server/stock-portal/logs/news.log
+
+[Install]
+WantedBy=multi-user.target

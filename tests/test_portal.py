@@ -6,7 +6,7 @@ import pytest
 
 from common.db.heartbeat import ProcessState
 from portal import queries
-from portal.app import create_app, kst, num, percent, ratio_pct
+from portal.app import create_app, duration, kst, num, percent, ratio_pct
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ PROCESS = {
     "last_beat_at": "2026-08-29T10:00:00+00:00",
     "started_at": "2026-08-29T09:58:00+00:00",
     "age_seconds": 120,
-    "stale_after_hours": 26,
+    "stale_after_minutes": 26 * 60,
     "detail": {"exit_code": 0},
 }
 
@@ -149,12 +149,12 @@ def test_process_state_from_heartbeat():
     # 신호가 끊긴 running 은 죽은 것이다. 배치가 죽으면 error 를 남길 틈이 없다
     assert _state("running", age_hours=48) == "stale"
     assert _state("idle", age_hours=48) == "stale"
-    assert queries._process("x", "x", None, 26)["state"] == "unknown"
+    assert queries._process("x", "x", None, 26 * 60)["state"] == "unknown"
 
 
 def _state(status: str, age_hours: float) -> str:
     state = ProcessState("x", status, None, None, None, age_hours * 3600)
-    return queries._process("x", "x", state, 26)["state"]
+    return queries._process("x", "x", state, 26 * 60)["state"]
 
 
 def test_filters():
@@ -163,6 +163,12 @@ def test_filters():
     assert num(None) == "-"
     assert kst("2026-08-29T10:00:00+00:00") == "08-29 19:00"
     assert kst(None) == "-"
+
+
+def test_duration_reads_as_hours_or_minutes():
+    assert duration(1560) == "26시간"
+    assert duration(10) == "10분"
+    assert duration(None) == "-"
 
 
 def test_percent_and_ratio_are_different_units():

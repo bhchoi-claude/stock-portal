@@ -25,7 +25,7 @@
 
 {% macro process_note(p) %}
 {%- if p.state == 'unknown' -%}아직 실행된 적 없음
-{%- elif p.state == 'stale' -%}{{ p.stale_after_hours }}시간 넘게 소식 없음
+{%- elif p.state == 'stale' -%}{{ p.stale_after_minutes | duration }} 넘게 소식 없음
 {%- elif p.state == 'error' and p.detail -%}
   {%- if p.detail.error -%}{{ p.detail.error }}
   {%- elif p.detail.exit_code is defined -%}종료코드 {{ p.detail.exit_code }}

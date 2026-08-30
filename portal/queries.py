@@ -93,17 +93,17 @@ def _processes(cur: psycopg.Cursor) -> list[dict[str, Any]]:
     for entry in params["processes"]:
         state = states.pop(entry["name"], None)
         rows.append(
-            _process(entry["name"], entry["label"], state, entry["stale_after_hours"])
+            _process(entry["name"], entry["label"], state, entry["stale_after_minutes"])
         )
 
     # 설정에 없는 프로세스도 숨기지 않는다. 엔진이 붙는 날 바로 보인다
     for name, state in states.items():
-        rows.append(_process(name, name, state, params["default_stale_after_hours"]))
+        rows.append(_process(name, name, state, params["default_stale_after_minutes"]))
     return rows
 
 
 def _process(
-    name: str, label: str, state: ProcessState | None, stale_after_hours: int
+    name: str, label: str, state: ProcessState | None, stale_after_minutes: int
 ) -> dict[str, Any]:
     """화면이 쓰는 상태를 하나 더 만든다.
 
@@ -114,7 +114,7 @@ def _process(
         derived = "unknown"
     elif state.status == "error":
         derived = "error"
-    elif state.age_seconds > stale_after_hours * 3600:
+    elif state.age_seconds > stale_after_minutes * 60:
         derived = "stale"
     else:
         derived = "ok"
@@ -127,7 +127,7 @@ def _process(
         "last_beat_at": _ts(state.last_beat_at) if state else None,
         "started_at": _ts(state.started_at) if state else None,
         "age_seconds": round(state.age_seconds) if state else None,
-        "stale_after_hours": stale_after_hours,
+        "stale_after_minutes": stale_after_minutes,
         "detail": state.detail if state else None,
     }
 
