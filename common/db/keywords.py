@@ -32,3 +32,25 @@ def insert_keyword_mentions(
         returning=False,
     )
     return cur.rowcount
+
+
+def upsert_keywords(cur: psycopg.Cursor, terms: Sequence[str]) -> dict[str, int]:
+    """새 표현을 사전에 넣고 표현 -> 대표 id 를 돌려준다.
+
+    LLM 이 만든 표현은 `is_confirmed = FALSE` 로 들어온다.
+    **자동으로 병합하지 않는다.** 동의어 판단은 사람이 화면에서 한다
+    (INTERFACES.md 7.2).
+    """
+    if not terms:
+        return {}
+    cur.executemany(
+        "INSERT INTO keyword (term) VALUES (%s) ON CONFLICT (term) DO NOTHING",
+        [(term,) for term in terms],
+        returning=False,
+    )
+    cur.execute(
+        "SELECT term, COALESCE(canonical_id, keyword_id) FROM keyword"
+        " WHERE term = ANY(%s)",
+        (list(terms),),
+    )
+    return dict(cur.fetchall())

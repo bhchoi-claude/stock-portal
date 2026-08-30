@@ -1,0 +1,21 @@
+# API·LLM 상한. 성능 조절이 아니라 폭주 방지다 (PROJECT.md 8.7)
+
+llm:
+  # 정보수집에서만 쓴다. 가벼운 모델로 충분하다 (PROJECT.md 9장)
+  model: claude-haiku-4-5
+
+  # 하루 이 금액을 넘으면 호출하지 않고 알린다.
+  # 무한 루프로 같은 배치를 반복 호출하는 사고를 막는 값이다
+  daily_cost_usd: 1.0
+
+  # 1M 토큰당 단가(USD). 모델을 바꾸면 함께 바꾼다 (2026-06 기준)
+  price_input_per_mtok: 1.0
+  price_output_per_mtok: 5.0
+
+  # 한 번에 묶어 보낼 원문 수. 단건 호출은 하지 않는다 (INTERFACES.md 7.1)
+  batch_size: 20
+
+  # 원문에서 잘라 보낼 최대 길이. 뒷부분은 대개 꼬리표와 인용이다
+  max_chars: 1200
+
+  max_output_tokens: 4000

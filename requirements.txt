@@ -3,3 +3,6 @@ PyYAML>=6.0
 flask>=3.0
 gunicorn>=22.0
 telethon>=1.41
+
+# 정보수집 LLM 분석. 버전을 고정하지 않는다 (output_config 는 최근 SDK 에만 있다)
+anthropic
