@@ -1,8 +1,23 @@
 # checklist.md — Phase 6 백테스트 프레임워크
 
+> **다음 할 일: 5단계 루프와 CLI.** 1~4단계는 끝났고 서버 테스트도 통과했다.
+>
 > **전략 내용은 만들지 않는다.** 틀만 만들고 더미 전략으로 완주를 확인한다.
 > 전략은 Phase 7 에서 별도로 논의한다.
 > Phase 4·5 체크리스트는 커밋 `b0b782f` 이전 이력에 있다.
+
+## 지금까지 만든 것 (Phase 6)
+
+| 파일 | 무엇 |
+|---|---|
+| `common/feed/base.py` | `DataFeed` 규격 |
+| `common/feed/backtest.py` | 커서 이후를 안 보여주는 피드 |
+| `common/strategy/base.py` | `Context`·`EntryIntent`·`ExitIntent`·`Strategy` |
+| `common/strategy/dummy.py` | 틀 검증용 더미 전략 |
+| `common/risk.py` | 한도 다섯을 강제하는 `RiskManager` |
+| `backtest/execution.py` | 다음 봉 시가 체결, 수수료·세금·슬리피지 |
+
+5단계는 이것들을 하루 단위 루프로 잇는 일이다.
 
 ---
 
