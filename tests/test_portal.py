@@ -76,6 +76,16 @@ KEYWORD = {
     "is_confirmed": False,
 }
 
+DISCLOSURE = {
+    "rcept_no": "20260828000123",
+    "stock_id": "KRX:005930",
+    "corp_name": "삼성전자",
+    "report_name": "주요사항보고서",
+    "disclosure_type": "B",
+    "submitted_at": "2026-08-27T15:00:00+00:00",
+    "url": "https://dart.fss.or.kr/dsaf001/main.do?rcpNo=20260828000123",
+}
+
 MESSAGE = {
     "message_id": 1,
     "source": "가치투자클럽",
@@ -120,6 +130,7 @@ def stub(monkeypatch):
             "rows": [MESSAGE],
         },
     )
+    monkeypatch.setattr(queries, "disclosures", lambda limit: [DISCLOSURE])
     monkeypatch.setattr(
         queries,
         "channels",
@@ -143,6 +154,7 @@ def stub(monkeypatch):
         "/api/processes",
         "/api/events",
         "/api/keywords/surge",
+        "/api/disclosures",
         "/api/messages?keyword=유리기판",
     ],
 )

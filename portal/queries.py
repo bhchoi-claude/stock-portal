@@ -13,6 +13,7 @@ import psycopg
 
 from common.config import load_config
 from common.db.conn import connect, transaction
+from common.db.disclosures import Disclosure, recent_disclosures
 from common.db.events import EventRow, recent_events
 from common.db.heartbeat import ProcessState, list_heartbeats
 from common.db.indicators import IndicatorSnapshot, indicator_snapshot
@@ -85,6 +86,14 @@ def messages(term: str, since: date | None, limit: int | None) -> dict[str, Any]
         "from": since.isoformat(),
         "rows": [_message(row) for row in rows],
     }
+
+
+def disclosures(limit: int | None) -> list[dict[str, Any]]:
+    """최근 전자공시. 유형 코드가 이미 분류라 LLM 을 쓰지 않는다."""
+    params = load_config("portal")
+    capped = min(limit or params["disclosures_limit"], params["disclosures_limit"])
+    with read_cursor() as cur:
+        return [_disclosure(row) for row in recent_disclosures(cur, capped)]
 
 
 def channels() -> list[dict[str, Any]]:
@@ -198,6 +207,18 @@ def _keyword(row: DailyKeyword, rules: dict[str, Any]) -> dict[str, Any]:
         "is_new": is_new,
         "is_surging": surging,
         "is_confirmed": row.is_confirmed,
+    }
+
+
+def _disclosure(row: Disclosure) -> dict[str, Any]:
+    return {
+        "rcept_no": row.rcept_no,
+        "stock_id": row.stock_id,
+        "corp_name": row.corp_name,
+        "report_name": row.report_name,
+        "disclosure_type": row.disclosure_type,
+        "submitted_at": _ts(row.submitted_at),
+        "url": row.url,
     }
 
 

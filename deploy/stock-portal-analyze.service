@@ -13,5 +13,8 @@ WorkingDirectory=/home/bh-server/stock-portal
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.news.analyze
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.news.aggregate
 
+# 공시는 장중에도 올라온다. 일 1회 배치가 아니라 이쪽에 붙였다
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.news.dart
+
 StandardOutput=append:/home/bh-server/stock-portal/logs/news.log
 StandardError=append:/home/bh-server/stock-portal/logs/news.log

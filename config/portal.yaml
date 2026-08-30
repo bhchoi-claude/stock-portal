@@ -46,6 +46,10 @@ processes:
     label: 키워드 집계
     stale_after_minutes: 60
 
+  - name: dart
+    label: 전자공시 수집
+    stale_after_minutes: 60
+
 # 목록에 없는 프로세스가 heartbeat 에 나타났을 때 쓴다.
 # 설정에 추가하기 전에도 화면에서 사라지지 않게 한다
 default_stale_after_minutes: 1560   # 26시간
@@ -60,6 +64,7 @@ events_limit_max: 500
 # 정보수집 탭
 keywords_limit: 60
 messages_limit: 50
+disclosures_limit: 30
 
 # 원문 조회 기본 구간(일)
 messages_days: 7

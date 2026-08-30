@@ -47,6 +47,11 @@ def messages():
     return jsonify(queries.messages(keyword, _date_arg("from"), _int_arg("limit")))
 
 
+@api.get("/disclosures")
+def disclosures():
+    return jsonify(queries.disclosures(_int_arg("limit")))
+
+
 @api.post("/keywords/merge")
 def keywords_merge():
     """동의어 병합. 조회 전용 포털에서 유일한 쓰기다 (INTERFACES.md 10장).

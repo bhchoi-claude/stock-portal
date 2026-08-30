@@ -83,3 +83,34 @@ def share_events(corp_code: str, year: int) -> list[dict[str, str]]:
         for row in (data.get("list") or [])
         if row.get("isu_dcrs_de", "-") not in ("-", "", None)
     ]
+
+
+def disclosures(
+    bgn_de: str, end_de: str, pblntf_ty: str, corp_cls: str, page_no: int, size: int
+) -> tuple[list[dict[str, str]], int]:
+    """공시 목록 한 쪽. (행 목록, 전체 쪽수).
+
+    `pblntf_ty` 가 공시 유형이다. A 정기공시, B 주요사항보고, C 발행공시,
+    D 지분공시, I 거래소공시. **유형별로 나눠 조회하는 이유는 응답에
+    유형 코드가 없기 때문이다.** 무엇을 물었는지로만 유형을 알 수 있다.
+
+    `corp_cls` 는 시장 구분이다. Y 유가증권, K 코스닥.
+    """
+    data = json.loads(
+        _fetch(
+            "list.json",
+            bgn_de=bgn_de,
+            end_de=end_de,
+            pblntf_ty=pblntf_ty,
+            corp_cls=corp_cls,
+            page_no=str(page_no),
+            page_count=str(size),
+        )
+    )
+    status = data.get("status")
+    if status == "013":  # 조회된 데이터가 없음
+        return [], 0
+    if status != "000":
+        raise PermanentError(f"DART 오류 {status}: {data.get('message')}")
+
+    return list(data.get("list") or []), int(data.get("total_page") or 0)

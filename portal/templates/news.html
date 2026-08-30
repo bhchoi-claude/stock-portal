@@ -69,6 +69,26 @@
 {% endif %}
 
 <section>
+  <h2>전자공시</h2>
+  <ul class="events">
+    {% for d in disclosures %}
+    <li>
+      <div class="meta">
+        <span class="tag">{{ d.disclosure_type }}</span>
+        {{ d.submitted_at | kst }} · {{ d.corp_name }}
+      </div>
+      <div class="wrap">
+        {% if d.url %}<a href="{{ d.url }}" target="_blank" rel="noreferrer">
+          {{ d.report_name }}</a>{% else %}{{ d.report_name }}{% endif %}
+      </div>
+    </li>
+    {% else %}
+    <li class="dim">적재된 공시가 없다.</li>
+    {% endfor %}
+  </ul>
+</section>
+
+<section>
   <h2>수집 채널</h2>
   <div class="scroll">
     <table>

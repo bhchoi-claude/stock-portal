@@ -41,6 +41,7 @@ def news():
         active="news",
         surge=surge,
         channels=queries.channels(),
+        disclosures=queries.disclosures(None),
         term=term,
         messages=queries.messages(term, None, None) if term else None,
     )
