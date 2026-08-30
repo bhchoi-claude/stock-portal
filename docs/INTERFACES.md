@@ -657,16 +657,20 @@ class NewsAnalyzer:
     def match_keywords(self, content: str) -> tuple[list[int], str]:
         """키워드 사전 매칭. 반환: (매칭된 keyword_id, 미매칭 잔여 텍스트)"""
 
-    def extract_keywords_llm(self, contents: list[str]) -> list[list[str]]:
-        """미매칭분만 배치 호출. 입력 순서와 출력 순서가 일치해야 한다."""
+    def extract_keywords_llm(self, contents: list[str]) -> dict[int, list[str]]:
+        """미매칭분만 배치 호출. 글 번호(1부터) -> 키워드."""
 ```
 
 ### 7.1 LLM 호출 규약
 
 - 모델: 가벼운 모델(Haiku 계열)
 - **단건 호출 금지.** 최소 N건 모으거나 최대 대기 시간 경과 시 배치 발송
-- 출력은 JSON 배열만. 전문(preamble)이나 코드펜스를 허용하지 않는 프롬프트 사용
-- 파싱 실패 시 해당 배치는 `analyzed_at`을 채우지 않고 다음 주기에 재시도
+- 출력 형식은 프롬프트가 아니라 `output_config` 의 JSON 스키마로 강제한다
+- **결과에 글 번호를 붙여 받는다.** 순서에 기대면 한 건만 어긋나도 배치
+  전체를 버려야 한다 (2026-08-30 에 20건 중 19건을 그렇게 버렸다)
+- 답이 오지 않은 글은 `analyzed_at`을 채우지 않고 다음 주기에 재시도.
+  파싱이나 호출이 실패한 배치도 같다
+- 배열 길이는 스키마로 강제할 수 없다. `minItems` 는 0 이나 1 만 받는다
 - 호출 전 `api_usage`의 당일 누적을 확인. **일일 상한 초과 시 호출하지 않고 알림**
 
 ### 7.2 새 키워드 처리
