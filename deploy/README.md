@@ -108,10 +108,13 @@ sudo nginx -t && sudo systemctl reload nginx
 |---|---|
 | `/` | 대시보드 (국면·지표·프로세스. 매매 항목은 Phase 8 부터) |
 | `/market` | 시장분석 (지표 8종, 국면 판정 이력) |
+| `/news` | 정보수집 (키워드 급등, 원문, 동의어 병합) |
 | `/ops` | 운영·로그 (프로세스 상태, 최근 에러) |
 | `/api/…` | 조회 API (`INTERFACES.md` 10장) |
 
-**조회 전용이다.** 제어 엔드포인트는 엔진이 붙는 Phase 8 에 만든다.
+**쓰기는 `POST /api/keywords/merge` 하나뿐이다.** 사전을 다듬는 동작이고,
+파라미터를 바꾸는 엔드포인트는 만들지 않는다 (PROJECT.md 8.2).
+엔진 제어는 Phase 8 에 붙는다.
 
 프로세스 상태는 `heartbeat` 표를 읽는다. 표시할 프로세스와 '멈춤' 으로
 볼 시간은 `config/portal.yaml` 에 있다. 목록에 없는 프로세스도 신호가

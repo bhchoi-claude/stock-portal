@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -16,6 +16,8 @@ from common.db.conn import connect, transaction
 from common.db.events import EventRow, recent_events
 from common.db.heartbeat import ProcessState, list_heartbeats
 from common.db.indicators import IndicatorSnapshot, indicator_snapshot
+from common.db.keywords import DailyKeyword, daily_ranked, merge_keywords
+from common.db.messages import MessageView, collection_status, messages_for_keyword
 from common.db.regime import RegimeRow, current_regime, regime_history
 
 # 거래일은 시장 현지 기준이다. 서버 시계가 어디에 있든 KST 로 센다
@@ -53,6 +55,50 @@ def regime_range(start: date | None, end: date | None) -> dict[str, Any]:
         "to": end.isoformat(),
         "rows": [_regime(r) for r in rows],
     }
+
+
+def keywords_surge(day: date | None) -> dict[str, Any]:
+    """그날 키워드 순위. 급등 판정은 알림과 같은 임계값을 쓴다."""
+    rules = load_config("collect")["news"]["surge"]
+    params = load_config("portal")
+    day = day or datetime.now(SEOUL).date()
+    with read_cursor() as cur:
+        rows = daily_ranked(cur, day, params["keywords_limit"])
+    return {
+        "date": day.isoformat(),
+        "rows": [_keyword(row, rules) for row in rows],
+    }
+
+
+def messages(term: str, since: date | None, limit: int | None) -> dict[str, Any]:
+    """키워드가 나온 원문. 화면에서 근거를 확인하는 자리다."""
+    params = load_config("portal")
+    since = since or datetime.now(SEOUL).date() - timedelta(
+        days=params["messages_days"]
+    )
+    capped = min(limit or params["messages_limit"], params["messages_limit"])
+    start = datetime.combine(since, time.min, tzinfo=SEOUL)
+    with read_cursor() as cur:
+        rows = messages_for_keyword(cur, term, start, capped)
+    return {
+        "keyword": term,
+        "from": since.isoformat(),
+        "rows": [_message(row) for row in rows],
+    }
+
+
+def channels() -> list[dict[str, Any]]:
+    with read_cursor() as cur:
+        return [
+            {"name": name, "messages": count, "last_published_at": _ts(last)}
+            for name, count, last in collection_status(cur)
+        ]
+
+
+def merge(into: int, from_ids: list[int]) -> int:
+    """동의어 병합. 화면에서 하는 유일한 쓰기 동작이다 (INTERFACES.md 10장)."""
+    with read_cursor() as cur:
+        return merge_keywords(cur, into, from_ids)
 
 
 def indicators() -> list[dict[str, Any]]:
@@ -129,6 +175,38 @@ def _process(
         "age_seconds": round(state.age_seconds) if state else None,
         "stale_after_minutes": stale_after_minutes,
         "detail": state.detail if state else None,
+    }
+
+
+def _keyword(row: DailyKeyword, rules: dict[str, Any]) -> dict[str, Any]:
+    """급등 여부를 함께 낸다. 화면이 임계값을 따로 알 필요가 없다."""
+    is_new = row.ma7 is not None and row.ma7 == 0
+    surging = bool(
+        row.surge_ratio is not None
+        and row.ma7 is not None
+        and row.ma7 >= Decimal(str(rules["min_baseline"]))
+        and row.surge_ratio >= Decimal(str(rules["min_ratio"]))
+    ) or bool(is_new and row.mention_count >= rules["new_min_count"])
+
+    return {
+        "keyword_id": row.keyword_id,
+        "term": row.term,
+        "mention_count": row.mention_count,
+        "weighted_count": _num(row.weighted_count),
+        "ma7": _num(row.ma7),
+        "surge_ratio": _num(row.surge_ratio),
+        "is_new": is_new,
+        "is_surging": surging,
+        "is_confirmed": row.is_confirmed,
+    }
+
+
+def _message(row: MessageView) -> dict[str, Any]:
+    return {
+        "message_id": row.message_id,
+        "source": row.source_name,
+        "content": row.content,
+        "published_at": _ts(row.published_at),
     }
 
 

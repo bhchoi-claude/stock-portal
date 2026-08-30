@@ -34,6 +34,37 @@ def indicators():
     return jsonify(queries.indicators())
 
 
+@api.get("/keywords/surge")
+def keywords_surge():
+    return jsonify(queries.keywords_surge(_date_arg("date")))
+
+
+@api.get("/messages")
+def messages():
+    keyword = request.args.get("keyword", "").strip()
+    if not keyword:
+        raise BadRequest("keyword 가 필요합니다.")
+    return jsonify(queries.messages(keyword, _date_arg("from"), _int_arg("limit")))
+
+
+@api.post("/keywords/merge")
+def keywords_merge():
+    """동의어 병합. 조회 전용 포털에서 유일한 쓰기다 (INTERFACES.md 10장).
+
+    파라미터를 바꾸는 것이 아니라 사전을 다듬는 것이다 (PROJECT.md 8.2).
+    """
+    body = request.get_json(silent=True) or request.form
+    try:
+        into = int(body["into"])
+        from_ids = [int(value) for value in _as_list(body, "from")]
+    except (KeyError, TypeError, ValueError):
+        raise BadRequest("into 와 from 이 필요합니다.") from None
+    if not from_ids:
+        raise BadRequest("병합할 키워드가 없습니다.")
+
+    return jsonify(merged=queries.merge(into, from_ids))
+
+
 @api.get("/processes")
 def processes():
     return jsonify(queries.processes())
@@ -42,6 +73,14 @@ def processes():
 @api.get("/events")
 def events():
     return jsonify(queries.events(_levels_arg(), _int_arg("limit")))
+
+
+def _as_list(body, key: str) -> list:
+    """JSON 은 배열, 폼은 같은 이름의 값 여러 개로 온다."""
+    if hasattr(body, "getlist"):
+        return body.getlist(key)
+    value = body.get(key)
+    return value if isinstance(value, list) else [value]
 
 
 def _date_arg(name: str) -> date | None:

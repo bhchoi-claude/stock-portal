@@ -1,0 +1,104 @@
+{# 정보수집. 키워드 빈도·급등, 동의어 병합, 원문 조회 #}
+{% extends "base.html" %}
+{% block title %}정보수집 · 증권 포털{% endblock %}
+
+{% block body %}
+<section>
+  <h2>키워드 <span class="dim">{{ surge.date }}</span></h2>
+  <form id="merge">
+    <div class="scroll">
+      <table>
+        <thead>
+          {# 배수가 급등 판단의 핵심이다. 평소보다 앞에 둔다 #}
+          <tr><th></th><th>키워드</th><th class="right">건수</th>
+              <th class="right">배수</th><th class="right">평소</th></tr>
+        </thead>
+        <tbody>
+          {% for k in surge.rows %}
+          <tr>
+            <td><input type="checkbox" name="from" value="{{ k.keyword_id }}"></td>
+            <td>
+              <a href="?keyword={{ k.term | urlencode }}">{{ k.term }}</a>
+              {% if k.is_surging %}<span class="tag error">급등</span>{% endif %}
+              {% if k.is_new %}<span class="tag">신규</span>{% endif %}
+            </td>
+            <td class="right">{{ k.mention_count }}</td>
+            <td class="right">{{ k.surge_ratio | num }}</td>
+            <td class="right">{{ k.ma7 | num }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="dim">집계된 키워드가 없다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if surge.rows %}
+    <div class="merge-bar">
+      체크한 것을
+      <select name="into">
+        {% for k in surge.rows %}
+        <option value="{{ k.keyword_id }}">{{ k.term }}</option>
+        {% endfor %}
+      </select>
+      로 묶기
+      <button type="submit">병합</button>
+    </div>
+    <p class="dim">
+      동의어를 하나로 묶는다. 자동으로 묶지 않는 이유는 '유리기판' 과 '글라스기판'
+      이 같은 말인지 사람만 알기 때문이다. 숫자는 다음 집계(10분)에 반영된다.
+    </p>
+    {% endif %}
+  </form>
+</section>
+
+{% if messages %}
+<section>
+  <h2>원문 <span class="dim">{{ term }} · {{ messages["from"] }} 이후</span></h2>
+  <ul class="events">
+    {% for m in messages.rows %}
+    <li>
+      <div class="meta">{{ m.published_at | kst }} · {{ m.source }}</div>
+      <div class="wrap">{{ m.content }}</div>
+    </li>
+    {% else %}
+    <li class="dim">원문이 없다.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section>
+  <h2>수집 채널</h2>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>채널</th><th class="right">원문</th><th>마지막 글</th></tr></thead>
+      <tbody>
+        {% for c in channels %}
+        <tr>
+          <td>{{ c.name }}</td>
+          <td class="right">{{ c.messages }}</td>
+          <td>{{ c.last_published_at | kst }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<script>
+  document.getElementById("merge").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const response = await fetch("/api/keywords/merge", {
+      method: "POST",
+      body: new FormData(event.target),
+    });
+    if (response.ok) {
+      location.reload();
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    alert(body.error || "병합에 실패했습니다.");
+  });
+</script>
+{% endblock %}

@@ -31,10 +31,16 @@ nav { display: flex; }
 
 nav a {
   flex: 1;
-  padding: 14px 8px;
+  padding: 14px 4px;
   text-align: center;
   color: var(--dim);
   text-decoration: none;
+  white-space: nowrap;
+}
+
+/* 탭이 넷이라 좁은 화면에서 마지막 탭이 잘린다 */
+@media (max-width: 420px) {
+  nav a { font-size: 14px; padding: 13px 2px; }
 }
 
 nav a.on {
@@ -94,3 +100,17 @@ td { font-variant-numeric: tabular-nums; }
 .tag.ok, .tag.regime-safe { color: var(--ok); border-color: var(--ok); }
 .tag.stale, .tag.unknown, .tag.regime-neutral { color: var(--dim); }
 .tag.error, .tag.regime-danger { color: var(--bad); border-color: var(--bad); }
+
+.merge-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0; }
+
+select, button {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+}
+
+button { cursor: pointer; }
+a { color: var(--text); }

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, render_template
+from datetime import date
+
+from flask import Blueprint, render_template, request
 
 from . import queries
 
@@ -29,6 +31,21 @@ def market():
     )
 
 
+@views.get("/news")
+def news():
+    day = _date_arg("date")
+    surge = queries.keywords_surge(day)
+    term = request.args.get("keyword", "").strip()
+    return render_template(
+        "news.html",
+        active="news",
+        surge=surge,
+        channels=queries.channels(),
+        term=term,
+        messages=queries.messages(term, None, None) if term else None,
+    )
+
+
 @views.get("/ops")
 def ops():
     return render_template(
@@ -37,3 +54,11 @@ def ops():
         processes=queries.processes(),
         events=queries.events(OPS_LEVELS, None),
     )
+
+
+def _date_arg(name: str) -> date | None:
+    raw = request.args.get(name)
+    try:
+        return date.fromisoformat(raw) if raw else None
+    except ValueError:
+        return None

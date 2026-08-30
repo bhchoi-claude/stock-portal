@@ -82,10 +82,14 @@
 
 ## 6단계 — 화면
 
-- [ ] 정보수집 탭 — 급등 키워드, 원문 조회
-- [ ] `GET /api/keywords/surge?date=`, `GET /api/messages?keyword=&from=`
-- [ ] 키워드 동의어 병합 UI — `POST /api/keywords/merge`
+- [x] 정보수집 탭 (2026-08-30) — 키워드 순위·급등 표시, 원문, 채널 현황
+- [x] `GET /api/keywords/surge?date=`, `GET /api/messages?keyword=&from=`
+- [x] 키워드 동의어 병합 UI — `POST /api/keywords/merge`
   - **이것만 쓰기 동작이다.** 파라미터 변경이 아니라 사전 정리다
+  - 묶인 쪽의 집계 행은 지운다. 숫자는 다음 집계에 대표어로 합쳐진다
+- [x] 배수 열을 평소보다 앞에 뒀다. 휴대폰 폭에서 또 잘렸다
+- [ ] 서버 확인 — 실제 데이터로 병합을 한 번 해본다
+- [ ] 버릴 키워드(`NV` 등) 처리 — 스키마에 자리가 없다. **지금은 두기로 했다**
 
 ## Phase 5 완료 기준
 

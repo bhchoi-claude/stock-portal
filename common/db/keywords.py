@@ -178,3 +178,67 @@ def alerted_terms(cur: psycopg.Cursor, process_name: str, day: date) -> set[str]
         (process_name, str(day)),
     )
     return {row[0] for row in cur.fetchall() if row[0]}
+
+
+@dataclass(frozen=True)
+class DailyKeyword:
+    """하루치 키워드 한 줄. 화면과 API 가 함께 쓴다."""
+
+    keyword_id: int
+    term: str
+    mention_count: int
+    weighted_count: Decimal | None
+    ma7: Decimal | None
+    surge_ratio: Decimal | None
+    is_confirmed: bool
+
+
+def daily_ranked(cur: psycopg.Cursor, day: date, limit: int) -> list[DailyKeyword]:
+    """그날 많이 나온 순서. 급등 여부는 화면 쪽에서 임계값과 견준다."""
+    cur.execute(
+        """
+        SELECT k.keyword_id, k.term, d.mention_count, d.weighted_count,
+               d.ma7, d.surge_ratio, k.is_confirmed
+        FROM keyword_daily d
+        JOIN keyword k ON k.keyword_id = d.keyword_id
+        WHERE d.trade_date = %s
+        ORDER BY d.mention_count DESC, k.term
+        LIMIT %s
+        """,
+        (day, limit),
+    )
+    return [DailyKeyword(*row) for row in cur.fetchall()]
+
+
+def merge_keywords(cur: psycopg.Cursor, into: int, from_ids: Sequence[int]) -> int:
+    """동의어를 대표어로 묶는다. 사용자가 화면에서 하는 유일한 쓰기 동작이다.
+
+    대상이 이미 다른 대표어를 가리키면 그쪽으로 따라간다. 사슬을 만들지 않는다.
+
+    묶인 쪽의 집계 행은 지운다. 다시 집계하면 대표어 아래로 합쳐지는데,
+    지우지 않으면 옛 숫자가 화면에 남는다.
+    """
+    cur.execute(
+        "SELECT COALESCE(canonical_id, keyword_id) FROM keyword WHERE keyword_id = %s",
+        (into,),
+    )
+    row = cur.fetchone()
+    if row is None:
+        raise ValueError(f"없는 키워드입니다: {into}")
+    target = row[0]
+
+    merged = [keyword_id for keyword_id in from_ids if keyword_id != target]
+    if not merged:
+        return 0
+
+    cur.execute(
+        "UPDATE keyword SET canonical_id = %s WHERE keyword_id = ANY(%s)",
+        (target, merged),
+    )
+    changed = cur.rowcount
+    # 대표어를 확인된 것으로 본다. 사람이 직접 고른 것이기 때문이다
+    cur.execute(
+        "UPDATE keyword SET is_confirmed = TRUE WHERE keyword_id = %s", (target,)
+    )
+    cur.execute("DELETE FROM keyword_daily WHERE keyword_id = ANY(%s)", (merged,))
+    return changed

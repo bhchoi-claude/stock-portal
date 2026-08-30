@@ -123,3 +123,48 @@ def insert_stock_mentions(cur: psycopg.Cursor, pairs: Sequence[tuple[int, str]])
         returning=False,
     )
     return cur.rowcount
+
+
+@dataclass(frozen=True)
+class MessageView:
+    """원문 조회 결과 한 줄."""
+
+    message_id: int
+    source_name: str
+    content: str
+    published_at: datetime
+
+
+def messages_for_keyword(
+    cur: psycopg.Cursor, term: str, since: datetime, limit: int
+) -> list[MessageView]:
+    """그 키워드가 나온 원문. 동의어로 묶인 것도 함께 나온다."""
+    cur.execute(
+        """
+        SELECT r.message_id, s.name, r.content, r.published_at
+        FROM keyword_mention m
+        JOIN raw_message r USING (message_id)
+        JOIN source s ON s.source_id = r.source_id
+        WHERE m.keyword_id = (
+                SELECT COALESCE(canonical_id, keyword_id) FROM keyword WHERE term = %s
+              )
+          AND r.published_at >= %s
+        ORDER BY r.published_at DESC
+        LIMIT %s
+        """,
+        (term, since, limit),
+    )
+    return [MessageView(*row) for row in cur.fetchall()]
+
+
+def collection_status(cur: psycopg.Cursor) -> list[tuple[str, int, datetime | None]]:
+    """채널별 수집 현황. (이름, 건수, 마지막 글 시각)"""
+    cur.execute(
+        """
+        SELECT s.name, COUNT(r.message_id), MAX(r.published_at)
+        FROM source s LEFT JOIN raw_message r USING (source_id)
+        WHERE s.kind = 'telegram' AND s.is_active
+        GROUP BY s.name ORDER BY 2 DESC
+        """
+    )
+    return [(row[0], row[1], row[2]) for row in cur.fetchall()]

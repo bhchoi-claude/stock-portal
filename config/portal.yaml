@@ -56,3 +56,10 @@ regime_history_days: 90
 # 이벤트 조회 건수
 events_limit_default: 50
 events_limit_max: 500
+
+# 정보수집 탭
+keywords_limit: 60
+messages_limit: 50
+
+# 원문 조회 기본 구간(일)
+messages_days: 7

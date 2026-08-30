@@ -64,6 +64,26 @@ EVENT = {
 }
 
 
+KEYWORD = {
+    "keyword_id": 7,
+    "term": "유리기판",
+    "mention_count": 30,
+    "weighted_count": "30.00",
+    "ma7": "4.300000",
+    "surge_ratio": "7.000000",
+    "is_new": False,
+    "is_surging": True,
+    "is_confirmed": False,
+}
+
+MESSAGE = {
+    "message_id": 1,
+    "source": "가치투자클럽",
+    "content": "유리기판 수주 확대",
+    "published_at": "2026-08-29T10:00:00+00:00",
+}
+
+
 @pytest.fixture
 def stub(monkeypatch):
     """조회 함수를 고정값으로 바꾼다. 라우팅과 변환만 본다."""
@@ -86,6 +106,31 @@ def stub(monkeypatch):
     monkeypatch.setattr(queries, "indicators", lambda: [INDICATOR])
     monkeypatch.setattr(queries, "processes", lambda: [PROCESS])
     monkeypatch.setattr(queries, "events", lambda levels, limit: [EVENT])
+    monkeypatch.setattr(
+        queries,
+        "keywords_surge",
+        lambda day: {"date": "2026-08-30", "rows": [KEYWORD]},
+    )
+    monkeypatch.setattr(
+        queries,
+        "messages",
+        lambda term, since, limit: {
+            "keyword": term,
+            "from": "2026-08-23",
+            "rows": [MESSAGE],
+        },
+    )
+    monkeypatch.setattr(
+        queries,
+        "channels",
+        lambda: [
+            {
+                "name": "가치투자클럽",
+                "messages": 194,
+                "last_published_at": "2026-08-29T10:00:00+00:00",
+            }
+        ],
+    )
 
 
 @pytest.mark.parametrize(
@@ -97,6 +142,8 @@ def stub(monkeypatch):
         "/api/indicators",
         "/api/processes",
         "/api/events",
+        "/api/keywords/surge",
+        "/api/messages?keyword=유리기판",
     ],
 )
 def test_api_ok(client, stub, path):
@@ -135,7 +182,9 @@ def test_level_is_split_and_uppercased(client, monkeypatch):
     assert seen == {"levels": ["ERROR", "CRITICAL"], "limit": 10}
 
 
-@pytest.mark.parametrize("path", ["/", "/market", "/ops"])
+@pytest.mark.parametrize(
+    "path", ["/", "/market", "/ops", "/news", "/news?keyword=유리기판"]
+)
 def test_pages_render(client, stub, path):
     response = client.get(path)
     assert response.status_code == 200
@@ -182,3 +231,35 @@ def test_percent_and_ratio_are_different_units():
 def test_num_keeps_decimal_exact():
     """float 로 바꾸면 값이 미세하게 달라진다. Decimal 로만 다룬다."""
     assert num(str(Decimal("0.1") + Decimal("0.2"))) == "0.3"
+
+
+def test_messages_needs_a_keyword(client, stub):
+    assert client.get("/api/messages").status_code == 400
+
+
+def test_merge_reads_form_and_json(client, monkeypatch):
+    """화면은 폼으로, API 는 JSON 으로 보낸다. 같은 엔드포인트다."""
+    seen = []
+    monkeypatch.setattr(
+        queries, "merge", lambda into, ids: seen.append((into, ids)) or 1
+    )
+
+    assert (
+        client.post(
+            "/api/keywords/merge", data={"into": "7", "from": ["8", "9"]}
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post("/api/keywords/merge", json={"into": 7, "from": [8]}).status_code
+        == 200
+    )
+    assert seen == [(7, [8, 9]), (7, [8])]
+
+
+def test_merge_rejects_empty(client, stub):
+    assert (
+        client.post("/api/keywords/merge", json={"into": 7, "from": []}).status_code
+        == 400
+    )
+    assert client.post("/api/keywords/merge", json={"from": [8]}).status_code == 400
