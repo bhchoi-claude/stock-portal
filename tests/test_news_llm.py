@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-import pytest
-
 from collectors.news.llm import KeywordExtractor, clean_terms, cost_of
 
 PRICES = {"price_input_per_mtok": 1.0, "price_output_per_mtok": 5.0}
@@ -47,24 +45,46 @@ def _extractor(payload: str) -> KeywordExtractor:
     return KeywordExtractor(FakeClient(payload), "claude-haiku-4-5", 4000, 1200)
 
 
-def test_extract_keeps_input_order():
-    extractor = _extractor('{"results": [["HBM"], [], ["유리기판", "소부장"]]}')
+def test_extract_maps_by_index():
+    extractor = _extractor(
+        '{"results": [{"index": 1, "keywords": ["HBM"]},'
+        ' {"index": 3, "keywords": ["유리기판", "소부장"]}]}'
+    )
     result = extractor.extract(["가", "나", "다"])
 
-    assert result.keywords == [["HBM"], [], ["유리기판", "소부장"]]
+    assert result.keywords == {1: ["HBM"], 3: ["유리기판", "소부장"]}
     assert (result.input_tokens, result.output_tokens) == (1000, 200)
 
 
-def test_count_mismatch_raises():
-    """출력이 입력보다 적으면 어느 글의 키워드인지 알 수 없다. 배치를 버린다."""
-    extractor = _extractor('{"results": [["HBM"]]}')
-    with pytest.raises(ValueError):
-        extractor.extract(["가", "나"])
+def test_missing_entries_are_left_out():
+    """모델이 글 하나를 빼먹어도 나머지는 쓴다.
+
+    번호가 없던 때는 20건 중 19건이 멀쩡해도 배치를 통째로 버렸다 (2026-08-30).
+    """
+    extractor = _extractor('{"results": [{"index": 2, "keywords": []}]}')
+    result = extractor.extract(["가", "나"])
+    assert result.keywords == {2: []}
+
+
+def test_out_of_range_index_is_dropped():
+    extractor = _extractor(
+        '{"results": [{"index": 9, "keywords": ["HBM"]},'
+        ' {"index": 0, "keywords": ["X"]}]}'
+    )
+    assert extractor.extract(["가", "나"]).keywords == {}
+
+
+def test_schema_pins_the_count():
+    extractor = _extractor('{"results": []}')
+    extractor.extract(["가", "나", "다"])
+    schema = extractor.client.messages.kwargs["output_config"]["format"]["schema"]
+    assert schema["properties"]["results"]["minItems"] == 3
+    assert schema["properties"]["results"]["maxItems"] == 3
 
 
 def test_json_format_is_forced():
     """전문이나 코드펜스가 섞일 자리를 없앤다 (INTERFACES.md 7.1)."""
-    extractor = _extractor('{"results": [[]]}')
+    extractor = _extractor('{"results": []}')
     extractor.extract(["가"])
     assert extractor.client.messages.kwargs["output_config"]["format"]["type"] == (
         "json_schema"
@@ -72,7 +92,7 @@ def test_json_format_is_forced():
 
 
 def test_long_text_is_cut():
-    extractor = KeywordExtractor(FakeClient('{"results": [[]]}'), "m", 100, 10)
+    extractor = KeywordExtractor(FakeClient('{"results": []}'), "m", 100, 10)
     extractor.extract(["가" * 50])
     sent = extractor.client.messages.kwargs["messages"][0]["content"]
     assert sent == "[1] " + "가" * 10

@@ -90,7 +90,7 @@ def run_llm(leftovers: Sequence[tuple[int, str]], limits: dict[str, Any]) -> int
             continue
 
         cost = cost_of(result.input_tokens, result.output_tokens, limits)
-        terms = sorted({term for terms in result.keywords for term in terms})
+        terms = sorted({t for terms in result.keywords.values() for t in terms})
 
         with connect() as conn, transaction(conn) as cur:
             record_usage(
@@ -106,16 +106,21 @@ def run_llm(leftovers: Sequence[tuple[int, str]], limits: dict[str, Any]) -> int
             insert_keyword_mentions(
                 cur,
                 [
-                    (message_id, ids[term])
-                    for (message_id, _), extracted in zip(batch, result.keywords)
+                    (batch[index - 1][0], ids[term])
+                    for index, extracted in result.keywords.items()
                     for term in extracted
                     if term in ids
                 ],
             )
-            mark_analyzed(cur, [message_id for message_id, _ in batch], "llm")
+            answered = [batch[index - 1][0] for index in result.keywords]
+            mark_analyzed(cur, answered, "llm")
 
-        processed += len(batch)
-        logger.info("배치 %d건, 키워드 %d종, $%s", len(batch), len(terms), cost)
+        processed += len(answered)
+        missing = len(batch) - len(answered)
+        if missing:
+            # 빠진 글은 표시하지 않았다. 다음 주기가 다시 가져간다
+            logger.warning("배치 %d건 중 %d건 무응답", len(batch), missing)
+        logger.info("배치 %d건, 키워드 %d종, $%s", len(answered), len(terms), cost)
 
     return processed
 
