@@ -14,6 +14,10 @@ venv/
 .env.*
 !.env.example
 
+# 텔레그램 세션. 로그인 자격이 들어 있다
+*.session
+*.session-journal
+
 # 로컬 설정 (config/의 공용 yaml은 커밋한다)
 config/*.local.yaml
 config/accounts.yaml

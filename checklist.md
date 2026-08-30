@@ -16,7 +16,9 @@
 ## 1단계 — 텔레그램 수집 (LLM 없음)
 
 - [ ] `source` 에 채널 적재 (사용자 목록 대기)
-- [ ] Telethon 클라이언트 — 세션 파일은 `.gitignore`
+- [x] Telethon 로그인 CLI (2026-08-29) — `python -m collectors.news.login`.
+      세션 파일은 `.gitignore`, 권한 600. 구독 채널 목록을 함께 찍는다
+- [ ] Telethon 수집 클라이언트 (상시)
 - [ ] `collector-news` 상시 프로세스, 수신 → `raw_message` 적재
 - [ ] 중복 차단 — `content_hash`, `UNIQUE (source_id, content_hash)`
 - [ ] 재시작 복구 — 끊긴 동안의 메시지를 따라잡는다
