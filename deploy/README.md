@@ -149,9 +149,10 @@ systemd 아래에서는 물을 곳이 없기 때문이다. 5분에 5번 실패�
 살아 있는지는 포털 운영·로그 탭에서 본다. 60초마다 신호를 남기므로
 10분 넘게 조용하면 '멈춤' 으로 표시된다.
 
-### 규칙 분석 배치
+### 분석·집계 배치
 
-10분마다 돌며 적재된 원문에서 종목과 키워드를 뽑는다. 아직 LLM 을 쓰지 않는다.
+10분마다 두 가지를 돌린다. 원문에서 종목·키워드를 뽑고(사전 다음에 LLM),
+그 결과를 날짜별로 집계해 급등을 알린다.
 
 ```bash
 sudo cp deploy/stock-portal-analyze.service deploy/stock-portal-analyze.timer /etc/systemd/system/
@@ -165,3 +166,13 @@ sudo systemctl enable --now stock-portal-analyze.timer
 ```sql
 UPDATE raw_message SET analyzed_at = NULL, analysis_method = NULL;
 ```
+
+과거분을 한꺼번에 다시 집계하려면 시작일을 준다.
+
+```bash
+.venv/bin/python -m collectors.news.aggregate 2026-08-14
+```
+
+LLM 비용은 `api_usage` 에 쌓인다. 일일 상한은 `config/limits.yaml` 이고,
+넘으면 그날은 호출하지 않고 텔레그램으로 알린다. 분석되지 않은 원문은
+표시가 비어 있어 다음 날 이어서 처리된다.
