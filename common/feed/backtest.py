@@ -32,11 +32,13 @@ class BacktestFeed(DataFeed):
         *,
         close_time: time,
         universe_size: int,
+        liquidity_days: int,
     ) -> None:
         self.cur = cur
         self.day = day
         self.close_time = close_time
         self.universe_size = universe_size
+        self.liquidity_days = liquidity_days
 
     def set_date(self, day: date) -> None:
         """커서를 옮긴다. 뒤로 돌리는 것도 막지 않는다. 재현에 쓴다."""
@@ -82,7 +84,7 @@ class BacktestFeed(DataFeed):
         )
 
     def get_universe(self) -> list[str]:
-        return universe_at(self.cur, self.day, self.universe_size)
+        return universe_at(self.cur, self.day, self.universe_size, self.liquidity_days)
 
     def get_regime(self) -> Regime:
         """커서일 이전의 마지막 판정. 판정이 없으면 중립으로 본다.

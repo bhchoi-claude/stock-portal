@@ -53,9 +53,7 @@ backtest:
   # 무위험수익률은 0 으로 본다. 바꾸면 숫자가 달라지므로 params 에 통째로 남는다
   days_per_year: 252
 
-  # 유니버스 크기. 거래대금 상위 몇 종목까지 볼지.
-  # **틀을 돌리는 데 필요한 최소값이다.** 확정은 Phase 7 (config/universe.yaml)
-  universe_size: 200
+  # 유니버스는 config/universe.yaml 로 옮겼다 (2026-08-30)
 
 risk:
   # 국면별 자금 배분 비율. **임시값이다.** 근거는 백테스트를 돌려야 생긴다.

@@ -363,8 +363,21 @@ def open_on(cur: psycopg.Cursor, stock_id: str, day: date) -> Decimal | None:
     return row[0] if row else None
 
 
-def universe_at(cur: psycopg.Cursor, day: date, limit: int) -> list[str]:
-    """그날 거래된 종목 중 매매 대상. 거래대금 상위 순서.
+def universe_at(
+    cur: psycopg.Cursor, day: date, limit: int, liquidity_days: int
+) -> list[str]:
+    """그날 거래된 종목 중 매매 대상. **평소 유동성 상위 순서.**
+
+    순위는 직전 `liquidity_days` 거래일의 **평균** 거래대금으로 매기고
+    **그날은 뺀다** (2026-08-30 실측).
+
+    그날 거래대금으로 뽑으면 급등한 날 유니버스에 들어온 종목을 사게 된다.
+    거래대금이 폭증한 날은 급등한 날이고 급등 뒤에는 되돌린다. 매매하려는
+    사건이 유니버스 선정을 오염시킨다. 실측으로 20일 뒤 중앙값이
+    -4.69%(오염) 대 -2.43%(평소 유동성) 로 갈렸다.
+
+    **평소가 없는 종목은 넣지 않는다.** 신규 상장은 며칠 치 평균이 부풀어
+    유동성이 큰 것처럼 보인다.
 
     **`stock` 의 현재값이 아니라 `stock_status` 의 그날 값을 본다**
     (SCHEMA.md 1장). 현재값으로 과거를 판단하면 '오늘 관리종목인 회사를
@@ -372,11 +385,29 @@ def universe_at(cur: psycopg.Cursor, day: date, limit: int) -> list[str]:
 
     폐지 종목도 폐지 이전에는 포함된다. 빼면 생존편향이 생긴다.
     """
+    # 거래일 수를 달력일로 넉넉히 덮는다. 주말·연휴가 끼어도 모자라지 않게
+    lookback = liquidity_days * 2 + 10
+
     cur.execute(
         """
+        WITH recent AS (
+            SELECT stock_id, value,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY stock_id ORDER BY trade_date DESC
+                   ) rn
+            FROM price_daily
+            WHERE trade_date < %s AND trade_date >= %s::date - %s
+        ),
+        liquidity AS (
+            SELECT stock_id, AVG(value) av
+            FROM recent WHERE rn <= %s
+            GROUP BY stock_id
+            HAVING COUNT(*) >= %s
+        )
         SELECT p.stock_id
         FROM price_daily p
         JOIN stock s USING (stock_id)
+        JOIN liquidity l USING (stock_id)
         WHERE p.trade_date = %s
           AND NOT s.is_preferred AND NOT s.is_spac
           AND NOT EXISTS (
@@ -386,10 +417,20 @@ def universe_at(cur: psycopg.Cursor, day: date, limit: int) -> list[str]:
                 AND (st.valid_to IS NULL OR st.valid_to > %s)
                 AND (st.is_managed OR st.is_suspended)
           )
-        ORDER BY p.value DESC NULLS LAST, p.stock_id
+        ORDER BY l.av DESC NULLS LAST, p.stock_id
         LIMIT %s
         """,
-        (day, day, day, limit),
+        (
+            day,
+            day,
+            lookback,
+            liquidity_days,
+            liquidity_days,
+            day,
+            day,
+            day,
+            limit,
+        ),
     )
     return [row[0] for row in cur.fetchall()]
 

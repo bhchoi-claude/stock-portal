@@ -14,6 +14,9 @@ CODE = "999980"
 STOCK_ID = make_stock_id("KRX", CODE)
 CLOSE_TIME = time(15, 30)
 
+# 픽스처가 5일치뿐이라 평소 유동성 창을 짧게 잡는다
+LIQUIDITY_DAYS = 2
+
 # 5일치. 커서를 가운데 두고 뒤쪽이 새지 않는지 본다.
 # **실제 시세가 없는 구간을 쓴다.** 운영 데이터가 있는 날짜를 쓰면
 # 유니버스 단정이 상위 종목들에 밀려 깨진다 (2026-08-30 에 깨졌다)
@@ -51,7 +54,13 @@ def feed(cur):
             for index, day in enumerate(DAYS)
         ],
     )
-    return BacktestFeed(cur, DAYS[2], close_time=CLOSE_TIME, universe_size=10)
+    return BacktestFeed(
+        cur,
+        DAYS[2],
+        close_time=CLOSE_TIME,
+        universe_size=10,
+        liquidity_days=LIQUIDITY_DAYS,
+    )
 
 
 def test_candles_never_pass_the_cursor(feed):
@@ -121,9 +130,87 @@ def test_universe_uses_status_at_that_time(cur, feed):
 
 def test_regime_defaults_to_neutral(cur):
     """국면 이력이 없는 과거 구간을 돌려도 판정을 지어내지 않는다."""
-    feed = BacktestFeed(cur, date(2019, 1, 2), close_time=CLOSE_TIME, universe_size=10)
+    feed = BacktestFeed(
+        cur,
+        date(2019, 1, 2),
+        close_time=CLOSE_TIME,
+        universe_size=10,
+        liquidity_days=LIQUIDITY_DAYS,
+    )
     assert feed.get_regime() == Regime.NEUTRAL
 
 
 def test_signals_are_empty_until_engine_exists(feed):
     assert feed.get_signals("swing", feed.now()) == []
+
+
+def _listed(cur, code: str, values: list[Decimal]) -> str:
+    """종목 하나와 DAYS 만큼의 일봉을 넣는다. 거래대금만 시험이 정한다."""
+    stock_id = make_stock_id("KRX", code)
+    master.upsert_stocks(
+        cur,
+        [
+            Stock(
+                stock_id=stock_id,
+                exchange="KRX",
+                code=code,
+                board="KOSPI",
+                name=f"유동성{code}",
+                listed_at=date(2018, 1, 2),
+            )
+        ],
+    )
+    prices.upsert_price_daily(
+        cur,
+        [
+            PriceDaily(
+                stock_id=stock_id,
+                trade_date=day,
+                open=Decimal(100),
+                high=Decimal(110),
+                low=Decimal(90),
+                close=Decimal(100),
+                volume=1000,
+                value=value,
+            )
+            for day, value in zip(DAYS, values, strict=True)
+        ],
+    )
+    return stock_id
+
+
+def test_universe_ranks_by_past_liquidity_not_today(cur):
+    """**그날 거래대금으로 뽑으면 급등한 날 들어온 종목을 사게 된다.**
+
+    거래대금 폭증일은 급등일이고 급등 뒤에는 되돌린다. 매매하려는 사건이
+    유니버스 선정을 오염시킨다 (2026-08-30 실측).
+    """
+    steady = _listed(cur, "999981", [Decimal(1_000_000)] * 3 + [Decimal(1)] * 2)
+    spiked = _listed(cur, "999982", [Decimal(1)] * 3 + [Decimal(999_999_999)] * 2)
+
+    feed = BacktestFeed(
+        cur,
+        DAYS[3],  # 이날 spiked 의 거래대금이 폭증한다
+        close_time=CLOSE_TIME,
+        universe_size=50,
+        liquidity_days=LIQUIDITY_DAYS,
+    )
+    universe = feed.get_universe()
+
+    # 평소 유동성이 큰 쪽이 앞이다. 그날 거래대금으로 뽑았다면 반대가 된다
+    assert universe.index(steady) < universe.index(spiked)
+
+
+def test_stock_without_a_past_is_left_out(cur):
+    """평소가 없는 종목은 넣지 않는다. 신규 상장은 며칠 평균이 부풀어 보인다."""
+    stock_id = _listed(cur, "999983", [Decimal(1_000_000)] * 5)
+
+    feed = BacktestFeed(
+        cur,
+        DAYS[0],  # 직전 거래일이 하나도 없다
+        close_time=CLOSE_TIME,
+        universe_size=50,
+        liquidity_days=LIQUIDITY_DAYS,
+    )
+
+    assert stock_id not in feed.get_universe()

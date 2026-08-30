@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
 
     limits = load_config("limits")
     settings = limits["backtest"]
+    universe = load_config("universe")
     try:
         params = _override(load_config(f"strategy_{args.strategy}"), args.param)
     except ValueError as exc:
@@ -65,7 +66,8 @@ def main(argv: list[str] | None = None) -> int:
                 cur,
                 days[0],
                 close_time=time.fromisoformat(settings["close_time"]),
-                universe_size=settings["universe_size"],
+                universe_size=universe["size"],
+                liquidity_days=universe["liquidity_days"],
             ),
             market=market,
             strategy=STRATEGIES[args.strategy](),
@@ -92,7 +94,12 @@ def main(argv: list[str] | None = None) -> int:
             cur,
             args.strategy,
             days,
-            {"strategy": params, "risk": limits["risk"], "backtest": settings},
+            {
+                "strategy": params,
+                "risk": limits["risk"],
+                "backtest": settings,
+                "universe": universe,
+            },
             capital,
             result,
             metrics,
@@ -121,8 +128,8 @@ def _save(
         from_date=days[0],
         to_date=days[-1],
         universe=(
-            f"거래대금 상위 {params['backtest']['universe_size']}종목,"
-            " 관리종목·거래정지 제외"
+            f"직전 {params['universe']['liquidity_days']}거래일 평균 거래대금"
+            f" 상위 {params['universe']['size']}종목, 관리종목·거래정지 제외"
         ),
         params=params,
         initial_capital=capital,
