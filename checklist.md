@@ -29,10 +29,12 @@
 
 ## 2단계 — Strategy 규격
 
-- [ ] `Context`, `EntryIntent`, `ExitIntent` 타입 (`INTERFACES.md` 4장)
-- [ ] `Strategy` ABC — `scan`, `manage`, `on_start`, `on_day_end`
-- [ ] 더미 전략 — 매일 사서 익일 판다. **틀을 검증하는 용도다**
-- [ ] 전략은 의도만 반환한다. 주문도 크기 산정도 하지 않는다 (4.2)
+- [x] `Context`, `EntryIntent`, `ExitIntent` 타입 (2026-08-30)
+- [x] `Strategy` ABC — `scan`, `manage`, `on_start`, `on_day_end`
+- [x] 더미 전략 — 매일 사서 다음 주기에 판다. **틀 검증용이다**
+- [x] 전략은 의도만 반환한다. **`EntryIntent` 에 수량이 없다** (4.2)
+- [x] 파라미터는 `config/strategy_dummy.yaml`. 코드에 숫자를 쓰지 않는다 (4.3)
+- [x] 규격 테스트 6건 — DB 없이 스텁 피드로 돈다
 
 ## 3단계 — RiskManager
 
