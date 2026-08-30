@@ -68,3 +68,7 @@ disclosures_limit: 30
 
 # 원문 조회 기본 구간(일)
 messages_days: 7
+
+# 운영·로그 탭의 백테스트 실행 목록
+backtest_runs_limit: 20
+backtest_runs_max: 200

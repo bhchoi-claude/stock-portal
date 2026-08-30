@@ -54,6 +54,7 @@ def ops():
         active="ops",
         processes=queries.processes(),
         events=queries.events(OPS_LEVELS, None),
+        runs=queries.backtest_runs(None),
     )
 
 

@@ -12,6 +12,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from common.config import load_config
+from common.db.backtest import RunRow, recent_runs
 from common.db.conn import connect, transaction
 from common.db.disclosures import Disclosure, recent_disclosures
 from common.db.events import EventRow, recent_events
@@ -126,6 +127,18 @@ def events(levels: Sequence[str] | None, limit: int | None) -> list[dict[str, An
     capped = min(limit or params["events_limit_default"], params["events_limit_max"])
     with read_cursor() as cur:
         return [_event(e) for e in recent_events(cur, levels=levels, limit=capped)]
+
+
+def backtest_runs(limit: int | None) -> list[dict[str, Any]]:
+    """백테스트 실행 목록. 운영·로그 탭에서 지표를 나란히 본다.
+
+    실행은 CLI 로만 한다. **화면에서 백테스트를 돌리는 버튼은 만들지 않는다**
+    (PROJECT.md 11장, 포털은 조회 전용이다).
+    """
+    params = load_config("portal")
+    capped = min(limit or params["backtest_runs_limit"], params["backtest_runs_max"])
+    with read_cursor() as cur:
+        return [_run(r) for r in recent_runs(cur, capped)]
 
 
 @contextmanager
@@ -270,6 +283,30 @@ def _event(row: EventRow) -> dict[str, Any]:
         "category": row.category,
         "message": row.message,
         "detail": row.detail,
+        "created_at": _ts(row.created_at),
+    }
+
+
+def _run(row: RunRow) -> dict[str, Any]:
+    """`note` 를 반드시 함께 낸다. 생존편향 경고가 거기에 있다.
+
+    지표만 떼어 보내면 화면이 경고 없이 숫자만 띄우게 된다 (2026-08-30 승인).
+    """
+    return {
+        "run_id": row.run_id,
+        "strategy": row.strategy,
+        "from_date": _day(row.from_date),
+        "to_date": _day(row.to_date),
+        "initial_capital": _num(row.initial_capital),
+        "final_capital": _num(row.final_capital),
+        "total_return": _num(row.total_return),
+        "mdd": _num(row.mdd),
+        "win_rate": _num(row.win_rate),
+        "trade_count": row.trade_count,
+        "sharpe": _num(row.sharpe),
+        "fee_rate": _num(row.fee_rate),
+        "slippage_rate": _num(row.slippage_rate),
+        "note": row.note,
         "created_at": _ts(row.created_at),
     }
 

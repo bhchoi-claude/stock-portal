@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -122,3 +123,43 @@ def delisted_between(cur: psycopg.Cursor, start: date, end: date) -> tuple[int, 
         (start, end, start, end),
     )
     return cur.fetchone()
+
+
+@dataclass(frozen=True)
+class RunRow:
+    """`backtest_run` 한 행. 화면이 쓰는 칸만 담는다."""
+
+    run_id: int
+    strategy: str
+    from_date: date
+    to_date: date
+    initial_capital: Decimal
+    final_capital: Decimal | None
+    total_return: Decimal | None
+    mdd: Decimal | None
+    win_rate: Decimal | None
+    trade_count: int | None
+    sharpe: Decimal | None
+    fee_rate: Decimal
+    slippage_rate: Decimal
+    note: str | None
+    created_at: datetime
+
+
+def recent_runs(cur: psycopg.Cursor, limit: int) -> list[RunRow]:
+    """최근 실행부터. 지표를 나란히 놓고 비교하는 화면이 쓴다.
+
+    `params` 는 크고 화면에서 읽지 않으므로 뽑지 않는다. **`fee_rate` 와
+    `slippage_rate` 는 뽑는다.** 어떤 비용으로 돌린 결과인지 모르면
+    두 실행의 지표를 견줄 수 없다.
+    """
+    cur.execute(
+        """
+        SELECT run_id, strategy, from_date, to_date, initial_capital,
+               final_capital, total_return, mdd, win_rate, trade_count,
+               sharpe, fee_rate, slippage_rate, note, created_at
+        FROM backtest_run ORDER BY run_id DESC LIMIT %s
+        """,
+        (limit,),
+    )
+    return [RunRow(*row) for row in cur.fetchall()]

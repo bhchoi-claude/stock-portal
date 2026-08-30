@@ -1,4 +1,4 @@
-{# 운영·로그 (기초). 프로세스 상태와 최근 에러 #}
+{# 운영·로그. 프로세스 상태, 최근 에러, 백테스트 결과 #}
 {% extends "base.html" %}
 {% import "_macros.html" as m %}
 {% block title %}운영·로그 · 증권 포털{% endblock %}
@@ -12,5 +12,11 @@
 <section>
   <h2>최근 에러</h2>
   {{ m.event_list(events) }}
+</section>
+
+<section>
+  <h2>백테스트</h2>
+  {# 실행은 CLI 로만 한다. 포털은 조회 전용이다 (PROJECT.md 11장) #}
+  {{ m.backtest_table(runs) }}
 </section>
 {% endblock %}

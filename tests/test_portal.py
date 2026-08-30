@@ -6,7 +6,15 @@ import pytest
 
 from common.db.heartbeat import ProcessState
 from portal import queries
-from portal.app import create_app, duration, kst, num, percent, ratio_pct
+from portal.app import (
+    create_app,
+    duration,
+    kst,
+    num,
+    percent,
+    ratio_pct,
+    ratio_plain,
+)
 
 
 @pytest.fixture
@@ -27,6 +35,24 @@ REGIME = {
     "override_reason": None,
     "kospi_return": "0.0123",
     "kosdaq_return": None,
+}
+
+RUN = {
+    "run_id": 7,
+    "strategy": "dummy",
+    "from_date": "2025-03-04",
+    "to_date": "2025-03-31",
+    "initial_capital": "10000000.0000",
+    "final_capital": "9925857.0000",
+    "total_return": "-0.0074",
+    "mdd": "0.0263",
+    "win_rate": "0.4915",
+    "trade_count": 63,
+    "sharpe": "-0.7400",
+    "fee_rate": "0.000150",
+    "slippage_rate": "0.001000",
+    "note": "생존편향 경고: 이 구간에 폐지된 종목 6개는 모두 일봉이 남아 있다.",
+    "created_at": "2026-08-30T05:00:00+00:00",
 }
 
 INDICATOR = {
@@ -131,6 +157,7 @@ def stub(monkeypatch):
         },
     )
     monkeypatch.setattr(queries, "disclosures", lambda limit: [DISCLOSURE])
+    monkeypatch.setattr(queries, "backtest_runs", lambda limit: [RUN])
     monkeypatch.setattr(
         queries,
         "channels",
@@ -156,6 +183,7 @@ def stub(monkeypatch):
         "/api/keywords/surge",
         "/api/disclosures",
         "/api/messages?keyword=유리기판",
+        "/api/backtest/runs",
     ],
 )
 def test_api_ok(client, stub, path):
@@ -275,3 +303,47 @@ def test_merge_rejects_empty(client, stub):
         == 400
     )
     assert client.post("/api/keywords/merge", json={"from": [8]}).status_code == 400
+
+
+def test_backtest_runs_shows_the_warning_with_the_numbers(client, stub):
+    """생존편향 경고가 지표와 함께 화면에 뜬다 (2026-08-30 승인)."""
+    page = client.get("/ops").get_data(as_text=True)
+
+    assert "생존편향" in page
+    assert "-0.74%" in page  # 수익률은 부호를 붙인다
+    assert "2.63%" in page  # MDD 는 붙이지 않는다
+    assert "+2.63%" not in page
+
+
+def test_backtest_runs_is_in_the_ops_tab(client, stub):
+    """새 탭을 만들지 않았다. 운영·로그 안이다 (2026-08-30 확인)."""
+    page = client.get("/ops").get_data(as_text=True)
+    assert "백테스트" in page
+    assert "운영·로그" in page
+
+
+def test_empty_runs_render(client, monkeypatch, stub):
+    monkeypatch.setattr(queries, "backtest_runs", lambda limit: [])
+    page = client.get("/ops").get_data(as_text=True)
+
+    assert "실행 기록이 없다" in page
+
+
+def test_missing_metrics_are_dashes_not_zero(client, monkeypatch, stub):
+    """계산 불가를 0% 로 적으면 '다 졌다' 로 읽힌다."""
+    monkeypatch.setattr(
+        queries,
+        "backtest_runs",
+        lambda limit: [{**RUN, "win_rate": None, "sharpe": None, "trade_count": None}],
+    )
+    page = client.get("/ops").get_data(as_text=True)
+
+    assert "0.00%" not in page
+
+
+def test_ratio_plain_has_no_sign_and_keeps_rate_digits():
+    """MDD 에 + 를 붙이면 오른 것처럼 읽힌다. 요율은 자릿수가 살아야 한다."""
+    assert ratio_plain("0.0263") == "2.63%"
+    assert ratio_plain("0.00015") == "0.015%"
+    assert ratio_plain(None) == "-"
+    assert ratio_pct("0.0263") == "+2.63%"

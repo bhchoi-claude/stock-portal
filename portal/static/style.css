@@ -77,6 +77,10 @@ td { font-variant-numeric: tabular-nums; }
 /* 표 안에서도 줄바꿈이 필요한 칸이 있다 */
 .wrap { white-space: normal; }
 
+/* 백테스트 경고는 그 실행의 숫자에 딸린 것이다. 선으로 가르지 않는다 */
+tr.has-note > td { border-bottom: none; }
+tr.note > td { padding-top: 0; }
+
 .events { list-style: none; margin: 0; padding: 0; }
 .events li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .events li:last-child { border-bottom: none; }

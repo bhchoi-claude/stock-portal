@@ -80,6 +80,11 @@ def events():
     return jsonify(queries.events(_levels_arg(), _int_arg("limit")))
 
 
+@api.get("/backtest/runs")
+def backtest_runs():
+    return jsonify(queries.backtest_runs(_int_arg("limit")))
+
+
 def _as_list(body, key: str) -> list:
     """JSON 은 배열, 폼은 같은 이름의 값 여러 개로 온다."""
     if hasattr(body, "getlist"):

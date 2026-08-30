@@ -1,4 +1,4 @@
-{# 화면 여럿이 쓰는 조각. 프로세스 상태와 지표 표 #}
+{# 화면 여럿이 쓰는 조각. 프로세스 상태, 지표 표, 백테스트 표 #}
 
 {% macro process_table(processes) %}
 <div class="scroll">
@@ -89,4 +89,39 @@
   {%- else -%}중립
   {%- endif -%}
 </span>
+{% endmacro %}
+
+{% macro backtest_table(runs) %}
+<div class="scroll">
+  <table>
+    {# 휴대폰 폭에서 수익률이 먼저 보여야 한다. 구간·비용은 이름 아래로 내린다 #}
+    <thead>
+      <tr><th>실행</th><th class="right">수익률</th><th class="right">MDD</th>
+          <th class="right">승률</th><th class="right">샤프</th></tr>
+    </thead>
+    <tbody>
+      {% for r in runs %}
+      <tr {{ 'class="has-note"' if r.note }}>
+        <td>#{{ r.run_id }} {{ r.strategy }}
+          <div class="dim wrap">{{ r.from_date }} ~ {{ r.to_date }}
+            · 매매 {{ r.trade_count if r.trade_count is not none else '-' }}건
+            · 수수료 {{ r.fee_rate | ratio_plain }}
+            · 슬리피지 {{ r.slippage_rate | ratio_plain }}</div>
+        </td>
+        <td class="right">{{ r.total_return | ratio_pct }}</td>
+        <td class="right">{{ r.mdd | ratio_plain }}</td>
+        {# 계산할 수 없는 지표는 '-' 다. 0% 로 적으면 '다 졌다' 로 읽힌다 #}
+        <td class="right">{{ r.win_rate | ratio_plain }}</td>
+        <td class="right">{{ r.sharpe | num }}</td>
+      </tr>
+      {% if r.note %}
+      {# 생존편향 경고를 숫자 바로 아래 붙인다. 문서에만 적으면 잊는다 (승인 사항) #}
+      <tr class="note"><td colspan="5" class="dim wrap warn">{{ r.note }}</td></tr>
+      {% endif %}
+      {% else %}
+      <tr><td colspan="5" class="dim">실행 기록이 없다. CLI 로 돌린다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
 {% endmacro %}

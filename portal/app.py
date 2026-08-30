@@ -29,6 +29,7 @@ def create_app() -> Flask:
     app.add_template_filter(kst, "kst")
     app.add_template_filter(num, "num")
     app.add_template_filter(ratio_pct, "ratio_pct")
+    app.add_template_filter(ratio_plain, "ratio_plain")
     app.add_template_filter(percent, "percent")
     app.add_template_filter(duration, "duration")
     return app
@@ -57,6 +58,18 @@ def ratio_pct(value: str | None) -> str:
     if value is None:
         return "-"
     return f"{Decimal(value) * 100:+.2f}%"
+
+
+def ratio_plain(value: str | None) -> str:
+    """비율을 부호 없는 백분율로. 낙폭·승률·요율처럼 방향이 정해진 값에 쓴다.
+
+    MDD 에 `+` 를 붙이면 오른 것처럼 읽힌다. 자릿수는 요율까지 보이도록
+    셋까지 두고 뒤의 0 은 뗀다. 0.00015 가 0.015% 다.
+    """
+    if value is None:
+        return "-"
+    text = f"{Decimal(value) * 100:.3f}".rstrip("0").rstrip(".")
+    return f"{text}%"
 
 
 def percent(value: str | None) -> str:
