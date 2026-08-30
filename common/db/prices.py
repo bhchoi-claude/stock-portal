@@ -309,3 +309,111 @@ def flow_coverage(cur: psycopg.Cursor) -> list[tuple[date, int]]:
         " GROUP BY trade_date ORDER BY trade_date"
     )
     return [(row[0], row[1]) for row in cur.fetchall()]
+
+
+def candles_until(
+    cur: psycopg.Cursor, stock_id: str, as_of: date, count: int
+) -> list[tuple[date, Decimal, Decimal, Decimal, Decimal, int]]:
+    """기준일까지의 일봉을 오래된 순서로. **조정가로 준다** (INTERFACES.md 3.3).
+
+    조정하지 않으면 분할일이 급락으로 보여 손절이 대량 발동한다.
+    거래량도 함께 조정한다. 분할하면 거래량이 늘어나기 때문이다.
+
+    기준일 이후 행은 나오지 않는다. 백테스트의 미래 참조를 막는 지점이다.
+    """
+    cur.execute(
+        """
+        SELECT trade_date,
+               open  * adj_factor, high   * adj_factor,
+               low   * adj_factor, close  * adj_factor,
+               (volume / adj_factor)::bigint
+        FROM price_daily
+        WHERE stock_id = %s AND trade_date <= %s
+        ORDER BY trade_date DESC
+        LIMIT %s
+        """,
+        (stock_id, as_of, count),
+    )
+    return list(reversed(cur.fetchall()))
+
+
+def raw_close(
+    cur: psycopg.Cursor, stock_id: str, as_of: date
+) -> tuple[date, Decimal, int] | None:
+    """기준일까지의 마지막 종가. **조정하지 않은 원주가다.**
+
+    현재가는 조정 대상이 아니다 (INTERFACES.md 3.3).
+    """
+    cur.execute(
+        "SELECT trade_date, close, volume FROM price_daily"
+        " WHERE stock_id = %s AND trade_date <= %s"
+        " ORDER BY trade_date DESC LIMIT 1",
+        (stock_id, as_of),
+    )
+    return cur.fetchone()
+
+
+def open_on(cur: psycopg.Cursor, stock_id: str, day: date) -> Decimal | None:
+    """그날의 시가(원주가). 체결 시뮬레이터가 쓴다."""
+    cur.execute(
+        "SELECT open FROM price_daily WHERE stock_id = %s AND trade_date = %s",
+        (stock_id, day),
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def universe_at(cur: psycopg.Cursor, day: date, limit: int) -> list[str]:
+    """그날 거래된 종목 중 매매 대상. 거래대금 상위 순서.
+
+    **`stock` 의 현재값이 아니라 `stock_status` 의 그날 값을 본다**
+    (SCHEMA.md 1장). 현재값으로 과거를 판단하면 '오늘 관리종목인 회사를
+    2년 전 백테스트에서도 제외' 하는 미래 참조가 된다.
+
+    폐지 종목도 폐지 이전에는 포함된다. 빼면 생존편향이 생긴다.
+    """
+    cur.execute(
+        """
+        SELECT p.stock_id
+        FROM price_daily p
+        JOIN stock s USING (stock_id)
+        WHERE p.trade_date = %s
+          AND NOT s.is_preferred AND NOT s.is_spac
+          AND NOT EXISTS (
+              SELECT 1 FROM stock_status st
+              WHERE st.stock_id = p.stock_id
+                AND st.valid_from <= %s
+                AND (st.valid_to IS NULL OR st.valid_to > %s)
+                AND (st.is_managed OR st.is_suspended)
+          )
+        ORDER BY p.value DESC NULLS LAST, p.stock_id
+        LIMIT %s
+        """,
+        (day, day, day, limit),
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def board_at(cur: psycopg.Cursor, stock_id: str, day: date) -> str | None:
+    """그날의 시장 구분. 증권거래세율이 시장마다 다를 수 있다."""
+    cur.execute(
+        "SELECT board FROM stock_status"
+        " WHERE stock_id = %s AND valid_from <= %s"
+        "   AND (valid_to IS NULL OR valid_to > %s)"
+        " ORDER BY valid_from DESC LIMIT 1",
+        (stock_id, day, day),
+    )
+    row = cur.fetchone()
+    return row[0] if row else None
+
+
+def last_traded_on_or_before(
+    cur: psycopg.Cursor, stock_id: str, day: date
+) -> date | None:
+    """폐지 종목의 마지막 거래일. 정리매매 마지막 가격으로 청산할 때 쓴다."""
+    cur.execute(
+        "SELECT MAX(trade_date) FROM price_daily"
+        " WHERE stock_id = %s AND trade_date <= %s",
+        (stock_id, day),
+    )
+    return cur.fetchone()[0]

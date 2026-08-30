@@ -99,3 +99,21 @@ class StockState:
     stock_id: str
     is_managed: bool
     is_suspended: bool
+
+
+@dataclass(frozen=True)
+class Signal:
+    """signal 테이블 한 행. 엔진은 stock_id, side, strength 만 보고 동작한다.
+
+    근거는 payload 에 통째로 들어간다. 전략의 내용에 의존하지 않는 구조다
+    (SCHEMA.md 5장).
+    """
+
+    signal_id: int
+    stock_id: str
+    strategy: str
+    side: Side
+    strength: Decimal | None
+    payload: dict | None
+    regime_at: str | None
+    created_at: datetime

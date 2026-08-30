@@ -18,12 +18,14 @@
 
 ## 1단계 — DataFeed
 
-- [ ] `DataFeed` ABC (`INTERFACES.md` 3장)
-- [ ] `BacktestFeed` — 커서 시각이 `now()` 다
-- [ ] **`now()` 이후 데이터를 반환하지 않는 단위 테스트** (CLAUDE.md 필수)
-- [ ] `get_candles` 는 조정가를 준다. `get_quote` 는 조정하지 않는다 (3.3)
-- [ ] `get_universe` 는 `stock_status` 의 **해당 시점 값**을 읽는다 (3.4)
-      현재값을 읽으면 생존편향이 생긴다
+- [x] `DataFeed` ABC — `common/feed/base.py` (2026-08-30)
+- [x] `BacktestFeed` — 커서 시각이 `now()` 다. 커서는 그날 장 마감
+- [x] **`now()` 이후 데이터를 반환하지 않는 단위 테스트** (CLAUDE.md 필수)
+- [x] `get_candles` 는 조정가를, `get_quote` 는 원주가를 준다 (3.3)
+- [x] `get_universe` 는 `stock_status` 의 **해당 시점 값**을 읽는다 (3.4)
+- [x] 국면 이력이 없는 구간은 중립으로 본다. 판정을 지어내지 않는다
+- [x] `Signal` 타입 추가 (`common/types.py`). `get_signals` 는 Phase 8 까지 빈 목록
+- [ ] 서버에서 DB 테스트 통과 확인 (10건)
 
 ## 2단계 — Strategy 규격
 

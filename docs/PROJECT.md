@@ -115,6 +115,7 @@ Cloudflare Tunnel + Zero Trust Access를 추가한다. 지금은 구현하지 �
 │   ├── env.py              .env 읽기 (비밀값)
 │   ├── config.py           config/ YAML 읽기
 │   ├── broker/             브로커 어댑터 (키움, 향후 토스)
+│   ├── feed/               DataFeed (백테스트·실전 공용 데이터 공급)
 │   ├── strategy/           전략 인터페이스 + 구현
 │   ├── db/                 모델, 마이그레이션
 │   └── notify/             텔레그램 알림
