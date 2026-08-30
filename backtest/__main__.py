@@ -9,6 +9,8 @@ from datetime import date, time
 from decimal import Decimal
 from typing import Any
 
+import yaml
+
 from common.config import load_config
 from common.db.backtest import delisted_between, insert_run, insert_trades
 from common.db.conn import connect, transaction
@@ -43,7 +45,12 @@ def main(argv: list[str] | None = None) -> int:
 
     limits = load_config("limits")
     settings = limits["backtest"]
-    params = load_config(f"strategy_{args.strategy}")
+    try:
+        params = _override(load_config(f"strategy_{args.strategy}"), args.param)
+    except ValueError as exc:
+        print(exc)
+        return 2
+
     capital = Decimal(str(args.capital or settings["initial_capital"]))
 
     with connect() as conn, transaction(conn) as cur:
@@ -93,7 +100,7 @@ def main(argv: list[str] | None = None) -> int:
             note,
         )
 
-    _report(run_id, args.strategy, days, capital, result, metrics, note)
+    _report(run_id, args.strategy, days, capital, result, metrics, note, args.param)
     return 0
 
 
@@ -153,7 +160,43 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         type=int,
         help="초기 자본. 없으면 config/limits.yaml 의 값을 쓴다",
     )
+    run.add_argument(
+        "--param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="전략 파라미터를 이번 실행에만 덮어쓴다. 여러 번 쓸 수 있다",
+    )
     return parser.parse_args(argv)
+
+
+def _override(params: dict[str, Any], assignments: list[str]) -> dict[str, Any]:
+    """전략 파라미터를 **이번 실행에만** 덮어쓴다.
+
+    설정 파일은 건드리지 않는다. 실제 사용한 값은 `backtest_run.params` 에
+    통째로 남으므로 어떤 값으로 돌린 결과인지 추적이 끊기지 않는다.
+
+    실계좌 파라미터를 바꾸는 통로가 아니다. 백테스트 한 번의 입력일 뿐이다
+    (CLAUDE.md 1 의 금지는 운영 파라미터를 런타임에 바꾸는 것을 막는다).
+
+    **없는 키는 거부한다.** 오타가 조용히 새 키를 만들면 아무것도 안 바뀐 채
+    바뀐 줄 알고 결과를 읽게 된다.
+    """
+    changed = dict(params)
+    for assignment in assignments:
+        key, separator, raw = assignment.partition("=")
+        if not separator:
+            raise ValueError(f"--param 은 KEY=VALUE 형식이어야 합니다: {assignment}")
+
+        key = key.strip()
+        if key not in params:
+            known = ", ".join(sorted(params))
+            raise ValueError(f"{key} 는 없는 파라미터입니다. 있는 것: {known}")
+
+        # YAML 로 읽어 설정 파일과 같은 방식으로 형을 정한다
+        changed[key] = yaml.safe_load(raw)
+
+    return changed
 
 
 def _report(
@@ -164,9 +207,10 @@ def _report(
     result: BacktestResult,
     metrics: Metrics,
     note: str,
+    overrides: list[str],
 ) -> None:
     print(f"run_id    {run_id}")
-    print(f"전략      {strategy}")
+    print(f"전략      {strategy}{' · ' + ' '.join(overrides) if overrides else ''}")
     print(f"구간      {days[0]} ~ {days[-1]} ({len(days)} 거래일)")
     print(f"초기자본  {capital:,.0f}")
     print(f"최종자본  {result.final_capital:,.0f}")
