@@ -2696,3 +2696,21 @@ LLM 이 붙으면 `llm` 이 된다.
 성능 조절이 아니라 폭주 방지다. Haiku 로 하루 수천 건을 분석하고도 남는다.
 무한 루프로 같은 배치를 반복 호출하는 사고를 막는 값이다.
 모자라면 설정에서 올리면 된다.
+
+### 첫 호출이 400 으로 막혔다 (2026-08-30)
+
+```
+anthropic-workspace-id is required when authenticating with an
+identity-linked API key
+```
+
+조직 계정에 묶인 키는 어느 워크스페이스에서 쓰는지 함께 보내야 한다.
+SDK 클라이언트의 `default_headers` 로 붙인다. 값은 `.env` 의
+`ANTHROPIC_WORKSPACE_ID` 에서 읽고, **없으면 헤더를 붙이지 않는다.**
+개인 키는 이 값이 없어야 정상이다.
+
+**실패가 설계대로 처리됐다.** 배치가 `analyzed_at` 을 채우지 않아 20건이
+그대로 남았고, 다음 실행이 다시 가져간다. 따로 손댈 것이 없었다.
+
+`anthropic` 은 1.2.0 이 설치됐다. `default_headers` 와 `output_config` 모두
+있다.

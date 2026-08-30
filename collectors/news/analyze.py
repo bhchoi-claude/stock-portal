@@ -20,7 +20,7 @@ from common.db.heartbeat import run_with_heartbeat
 from common.db.keywords import insert_keyword_mentions, keyword_terms, upsert_keywords
 from common.db.messages import insert_stock_mentions, mark_analyzed, unanalyzed
 from common.db.usage import record_usage, today_cost
-from common.env import require_env
+from common.env import load_env, require_env
 from common.notify.telegram import TelegramNotifier
 
 from .analyzer import NewsAnalyzer
@@ -65,7 +65,7 @@ def run_llm(leftovers: Sequence[tuple[int, str]], limits: dict[str, Any]) -> int
         return 0
 
     extractor = KeywordExtractor(
-        anthropic.Anthropic(api_key=api_key),
+        anthropic.Anthropic(api_key=api_key, default_headers=workspace_header()),
         limits["model"],
         limits["max_output_tokens"],
         limits["max_chars"],
@@ -187,6 +187,16 @@ def main(argv: list[str]) -> int:
         f" LLM {analyzed}건 처리, {len(leftovers) - analyzed}건 남음."
     )
     return 0
+
+
+def workspace_header() -> dict[str, str]:
+    """조직 계정의 키는 어느 워크스페이스에서 쓰는지 함께 보내야 한다.
+
+    없으면 400 `anthropic-workspace-id is required` 가 난다 (2026-08-30 실측).
+    개인 키는 이 값이 없어도 되므로 있을 때만 붙인다.
+    """
+    workspace = load_env("ANTHROPIC_WORKSPACE_ID")
+    return {"anthropic-workspace-id": workspace} if workspace else {}
 
 
 def _chunks(

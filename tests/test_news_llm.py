@@ -87,3 +87,14 @@ def test_cost_uses_decimal():
     cost = cost_of(1_000_000, 1_000_000, PRICES)
     assert cost == Decimal("6.0")
     assert isinstance(cost, Decimal)
+
+
+def test_workspace_header_only_when_set(monkeypatch):
+    """개인 키는 워크스페이스가 없다. 빈 헤더를 보내면 안 된다."""
+    from collectors.news import analyze
+
+    monkeypatch.setattr(analyze, "load_env", lambda key: None)
+    assert analyze.workspace_header() == {}
+
+    monkeypatch.setattr(analyze, "load_env", lambda key: "wrkspc_1")
+    assert analyze.workspace_header() == {"anthropic-workspace-id": "wrkspc_1"}
