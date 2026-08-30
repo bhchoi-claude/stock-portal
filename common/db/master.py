@@ -217,6 +217,12 @@ def delisted_ids(cur: psycopg.Cursor) -> set[str]:
     return {row[0] for row in cur.fetchall()}
 
 
+def delisted_dates(cur: psycopg.Cursor) -> dict[str, date]:
+    """폐지 종목의 폐지일. 백테스트가 보유 중 폐지를 감지하는 데 쓴다."""
+    cur.execute("SELECT stock_id, delisted_at FROM stock WHERE delisted_at IS NOT NULL")
+    return {row[0]: row[1] for row in cur.fetchall()}
+
+
 def clear_delisted(cur: psycopg.Cursor, stock_ids: Sequence[str]) -> int:
     """폐지 표시를 지운다. 폐지됐던 종목이 다시 마스터에 나타났을 때 쓴다.
 

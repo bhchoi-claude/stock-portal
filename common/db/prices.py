@@ -417,3 +417,17 @@ def last_traded_on_or_before(
         (stock_id, day),
     )
     return cur.fetchone()[0]
+
+
+def trading_days(cur: psycopg.Cursor, start: date, end: date) -> list[date]:
+    """구간 안에서 실제로 거래가 있었던 날.
+
+    휴장일은 행이 없으므로 자연히 빠진다. `exchange_holiday` 를 보지 않는
+    것은 그 명단이 완전하다는 보장이 없어서다. 데이터가 있는 날만 돈다.
+    """
+    cur.execute(
+        "SELECT DISTINCT trade_date FROM price_daily"
+        " WHERE trade_date BETWEEN %s AND %s ORDER BY trade_date",
+        (start, end),
+    )
+    return [row[0] for row in cur.fetchall()]
