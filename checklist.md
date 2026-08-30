@@ -38,10 +38,12 @@
 
 ## 3단계 — RiskManager
 
-- [ ] `RiskDecision`, `RiskManager.evaluate` (`INTERFACES.md` 5장)
-- [ ] **한도 초과 시 거부하는 테스트** (CLAUDE.md 필수)
-- [ ] 확인 항목 — 국면별 배분, 건당 최대, 종목당 비중, 동시 보유 수, 일일 손실
-- [ ] 한도는 `config/limits.yaml` 에 둔다. 코드에 숫자를 쓰지 않는다
+- [x] `RiskDecision`, `RiskManager.evaluate` (2026-08-30)
+- [x] **한도 초과 시 거부하는 테스트** 12건 (CLAUDE.md 필수)
+- [x] 확인 항목 다섯 — 국면 배분, 건당 최대, 종목당 비중, 보유 수, 일일 손실
+- [x] 한도는 `config/limits.yaml`. 국면 배분은 **임시값** (승인 사항)
+- [x] 국면 배분은 총 투입 한도라 이미 들고 있는 금액을 뺀다
+- [x] 일일 손실 한도는 전략 밖에서 강제한다. `start_day()` 로 기준을 잡는다
 
 ## 4단계 — 체결 시뮬레이터
 

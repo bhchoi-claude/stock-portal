@@ -41,3 +41,24 @@ backtest:
 
   # 백테스트 초기 자본. CLI 인자로 덮어쓸 수 있다
   initial_capital: 10000000
+
+risk:
+  # 국면별 자금 배분 비율. **임시값이다.** 근거는 백테스트를 돌려야 생긴다.
+  # Phase 3 국면 임계값과 같은 취급으로, 데이터가 쌓이면 조정한다
+  regime_allocation:
+    danger: 0.3
+    neutral: 0.7
+    safe: 1.0
+
+  # 건당 최대 투입 금액(원)
+  max_position_size: 1000000
+
+  # 종목당 최대 비중. 총자산 대비
+  max_weight_per_stock: 0.1
+
+  # 동시 보유 종목 수
+  max_positions: 10
+
+  # 일일 손실 한도. 총자산 대비. 도달하면 당일 신규 진입을 중단한다.
+  # **전략과 무관한 계층에서 강제한다** (INTERFACES.md 5장)
+  daily_loss_limit: 0.03
