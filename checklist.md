@@ -1,97 +1,93 @@
-# checklist.md — Phase 4 포털 셸 (읽기 전용)
+# checklist.md — Phase 5 정보수집
 
-> Phase 2·3 체크리스트는 커밋 `c383c65` 이전 이력에 있다.
-> 완료 요약은 `docs/ROADMAP.md` 진행 현황 참조.
+> Phase 4 는 코드가 끝났고 관측만 남았다. 아래 '이월' 참조.
+> Phase 2·3·4 체크리스트는 커밋 `9f55019` 이전 이력에 있다.
 
 ---
 
 ## 시작 전에 정한 것 (2026-08-29)
 
-사용자 확인을 받은 네 가지다. 이유는 `context-notes.md` 에 있다.
+사용자 확인을 받았다. 이유는 `context-notes.md` 에 있다.
 
-- 프레임워크는 **Flask**. 조회 API + 정적 화면이라 비동기가 필요 없다
-- 화면은 **최소 HTML 을 직접 쓴다**. Claude Design 산출물이 나오면 템플릿만 바꾼다
-- 프로세스 상태는 **`heartbeat` 테이블**로 간다. 쓰는 코드가 없어 이번에 만든다
-- `heartbeat.process_name` 은 **모듈별**. `event_log` 의 `process_name` 과 같은 이름을 쓴다
-- `GET /api/events` 를 추가한다. `INTERFACES.md` 10장 표에 없던 것이라 문서도 고친다
+- 빈도 집계는 **달력일(KST) 그대로**. 휴장일·주말에도 행이 생긴다
+- 종목명 사전은 **걸러서** 쓴다. 우선주·스팩 제외, 짧은 이름과 일반명사는 제외 목록
+- LLM 일일 상한은 **$1**. 넘으면 호출을 멈추고 알린다
 
-## heartbeat
+## 1단계 — 텔레그램 수집 (LLM 없음)
 
-- [x] `common/db/heartbeat.py` — upsert / 목록 조회
-- [x] `run_with_heartbeat()` — 시작 `running`, 종료코드 0 이면 `idle`, 아니면 `error`
-- [x] 수집기 7종 진입점에 연결 (`daily`, `indicators`, `regime`, `partitions`,
-      `price_minute`, `trading_flow`, `stock_flags`)
-- [x] 테스트 — 성공·실패·예외 세 경로가 각각 맞는 상태로 남는가
+- [ ] `source` 에 채널 적재 (사용자 목록 대기)
+- [ ] Telethon 클라이언트 — 세션 파일은 `.gitignore`
+- [ ] `collector-news` 상시 프로세스, 수신 → `raw_message` 적재
+- [ ] 중복 차단 — `content_hash`, `UNIQUE (source_id, content_hash)`
+- [ ] 재시작 복구 — 끊긴 동안의 메시지를 따라잡는다
+- [ ] heartbeat 기록 (상시 프로세스는 주기적으로 남긴다)
 
-## 조회 함수 (`common/db/`)
+**여기까지가 1차 목표다.** 원문이 쌓이기 시작하면 나머지는 언제든 다시 돌릴 수 있다.
 
-- [x] `regime.py` — 현재 국면, 판정 이력
-- [x] `indicators.py` — 지표 현황 스냅샷 (정의 + 최신값)
-- [x] `events.py` — 최근 이벤트
-- [x] `heartbeat.py` — 프로세스 상태
+## 2단계 — 사전 매칭 (LLM 없음)
 
-## 포털
+- [ ] 규칙 필터 — 광고·최소 길이·중복
+- [ ] 종목명 사전 — `stock` 에서 만들고 제외 목록을 `config/` 에 둔다
+- [ ] `stock_mention` 적재
+- [ ] 키워드 사전 매칭 → `keyword_mention`, 미매칭 잔여 텍스트 반환
+- [ ] 오탐 실측 — 표본을 눈으로 확인한다
 
-- [x] `portal/` Flask 앱 (`create_app`)
-- [x] `GET /api/regime/current`
-- [x] `GET /api/regime/history?from=&to=`
-- [x] `GET /api/indicators`
-- [x] `GET /api/processes`
-- [x] `GET /api/events?level=&limit=`
-- [x] `GET /api/dashboard` — 매매 항목은 빈 채로 둔다 (Phase 8 이후)
-- [x] `config/portal.yaml` — 프로세스 목록, 정지 판정 임계 시간, 조회 기본 구간
+## 3단계 — LLM (비용 발생 지점)
 
-## 화면
+- [ ] `api_usage` 기록과 **일일 상한 차단** (호출 전 확인)
+- [ ] 상한 도달 시 알림, 그날은 사전 매칭만으로 동작
+- [ ] 배치 호출 — 단건 금지, JSON 배열만, 입력·출력 순서 일치
+- [ ] 파싱 실패 시 `analyzed_at` 을 비운 채 다음 주기 재시도
+- [ ] 새 키워드는 `is_confirmed = FALSE` 로 삽입. 자동 병합하지 않는다
 
-- [x] 대시보드 (부분) — 국면, 지표 요약, 프로세스 상태
-- [x] 시장분석 — 지표 8종, 국면 판정 이력
-- [x] 운영·로그 (기초) — 프로세스 상태, 최근 에러
-- [x] 모바일 폭에서 읽히는가 — 375px 표본 데이터로 확인. 두 번 고쳤다.
-      지표는 값을 앞 열로 옮기고, 에러는 표를 버리고 두 줄 목록으로 바꿨다
+## 4단계 — 집계와 알림
 
-## 배포
+- [ ] `keyword_daily` — `mention_count`, `weighted_count`, `ma7`, `surge_ratio`
+- [ ] 급등 키워드 알림 — 임계값은 `config/`
+- [ ] 첫 등장 키워드 처리 (`ma7` 이 없으면 급등도가 무한대가 된다)
 
-- [x] `deploy/stock-portal-web.service` — 상시 프로세스 (gunicorn)
-- [x] `deploy/nginx-stock-portal.conf` — `/` → `portal:8000`
-- [x] `deploy/README.md` 설치 절차
+## 5단계 — DART
 
-## 문서
+- [ ] `dart_disclosure` 수집 — 기존 `collectors/market/dart.py` 클라이언트 재사용
+- [ ] 공시 유형 코드로 분류. **LLM 을 쓰지 않는다**
 
-- [x] `INTERFACES.md` 10장에 `/api/events` 추가
-- [x] `ROADMAP.md` 진행 현황 표 갱신 — Phase 2·3 이 '미시작' 으로 남아 있었다
+## 6단계 — 화면
 
-## Phase 4 완료 기준
+- [ ] 정보수집 탭 — 급등 키워드, 원문 조회
+- [ ] `GET /api/keywords/surge?date=`, `GET /api/messages?keyword=&from=`
+- [ ] 키워드 동의어 병합 UI — `POST /api/keywords/merge`
+  - **이것만 쓰기 동작이다.** 파라미터 변경이 아니라 사전 정리다
 
-- [ ] Tailscale 로 휴대폰에서 접속해 시장분석 화면이 보인다
-- [x] 수집기 상태가 화면에 반영된다 (2026-08-29) — `partitions` 를 손으로 돌려
-      `unknown` 이 `ok` 로 바뀌는 것을 확인했다. 나머지 6종은 첫 자동 실행을
-      기다린다 (일 1회 유닛 08-30 19:00, 키움 유닛 08-31 16:10)
+## Phase 5 완료 기준
+
+- [ ] 채널 추가 후 자동으로 수집·분석된다
+- [ ] `surge_ratio` 상위 키워드가 화면에 보인다
+- [ ] LLM 일일 상한 도달 시 호출이 멈추고 알림이 온다
 
 ---
 
 ## 사용자 조치 필요
 
-- [x] 서버에 `pip install -r requirements.txt` (2026-08-29) — 전체 265건 통과
-- [x] `stock-portal-web.service` 등록 (2026-08-29)
-- [x] 유닛 갱신 (2026-08-29) — 포트 8001. 재시작 후 `/api/processes` 응답 확인
-- [x] Nginx 설치·설정 (2026-08-29) — 80 → 8001, 기본 사이트 해제
-- [ ] 휴대폰에서 Tailscale 접속 확인
+- [ ] **채널 목록** — `@이름` 또는 숫자 ID, 채널명, 신뢰도(선택)
+- [ ] `.env` 에 `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `ANTHROPIC_API_KEY` 추가
+- [ ] **Telethon 최초 로그인** — 전화번호로 코드를 받아 세션을 만든다.
+      사용자가 서버에서 직접 해야 한다. 내가 대신하지 않는다
 
-## 08-31 에 확인할 것 (Phase 2 에서 이월)
+## Phase 4 에서 이월 — 관측만 남았다
 
-설정상으로는 동작한다. 첫 자동 실행을 아직 못 봤을 뿐이다.
+- [ ] 수집기 6종 heartbeat — 08-30 19:00(일 1회), 08-31 16:10(키움)
+- [ ] 분봉 자동 적재 — 키움 타이머 첫 발화
+- [ ] `stock_flags` 플래그 생존 — KRX 마스터가 돈 뒤에도 남는지
+- [ ] Claude Design 결과물 연결 — 산출물이 나오면 템플릿만 바꾼다
 
-- [ ] 분봉 자동 적재 — 키움 타이머 첫 발화 16:10. 지금까지는 손으로 돌렸다
-- [ ] `stock_flags` 플래그 생존 — 데일리 19:00 에 KRX 마스터가 돈 뒤에도
-      관리종목·거래정지가 남는지. DB 테스트로는 확인했다
+## 다른 단계로 넘긴 것
 
-## 남은 것 (다른 단계로 넘김)
-
-- [ ] `KOSPI_MA200_GAP` 도메인 검토 — 이격도 67% 가 '안전' 이 된다.
-      과열과 과랭을 함께 위험으로 보려면 선형이 아닌 규칙이 필요하다.
-      전략 판단이라 임의로 정하지 않는다 (Phase 7)
-- [ ] 현금배당 수집 — `alotMatter` 로 가능하다. `adjusts_price=FALSE` 라
-      조정계수에는 영향 없다
+- [ ] `KOSPI_MA200_GAP` 도메인 검토 — 이격도가 높을수록 '안전' 이 되는 규칙이다.
+      과열과 과랭을 함께 위험으로 보려면 선형이 아닌 규칙이 필요하다 (Phase 7)
+- [ ] VKOSPI 값 확인 — 08-28 이 50.08 이다. 보통 15~25 이고 같은 날 이격도는
+      과열 쪽이라 서로 어긋난다. `ka20006` 의 코드 `603` 부터 대조한다
+- [ ] 현금배당 수집 — `alotMatter`. `adjusts_price=FALSE` 라 조정계수에 영향 없다
+- [ ] 리치프랜즈랩 포트 — 문서의 5000 은 kavita 가 쓰고 있다 (Phase 11)
 
 ## 건드리지 않은 것
 
