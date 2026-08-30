@@ -3,8 +3,6 @@
 from datetime import date
 from decimal import Decimal
 
-import pytest
-
 from collectors.news.aggregate import days_to_rebuild, describe
 from common.db.keywords import Surge, aggregate_day, refresh_surge, surging
 
@@ -49,8 +47,9 @@ def test_missing_days_count_as_zero(cur):
     refresh_surge(cur, TODAY)
     ma7, ratio = _row(cur, keyword_id, TODAY)
 
-    # 직전 7일(08-23~08-29)에 1회 -> 하루 평균 1/7
-    assert ma7 == pytest.approx(Decimal(1) / 7, rel=Decimal("0.01"))
+    # 직전 7일(08-23~08-29)에 1회 -> 하루 평균 1/7.
+    # ma7 이 NUMERIC(10,2) 라 0.14 로 저장된다
+    assert ma7 == Decimal("0.14")
     assert ratio > 40
 
 
