@@ -99,6 +99,8 @@ class BacktestLoop:
             # 당일 종가로 잡으면 손실이 늘 0이라 한도가 죽는다
             self.risk.start_day(equity)
 
+            # 권리락은 그날 시가부터 적용된다. 체결보다 먼저 반영해야 한다
+            self._adjust(day)
             self._settle(day)
             self.feed.set_date(day)
             self._liquidate_delisted(day)
@@ -145,6 +147,22 @@ class BacktestLoop:
             )
             if fill is not None:
                 self._record(fill, order.reason, order.payload)
+
+    def _adjust(self, day: date) -> None:
+        """권리락일에 보유 수량과 평단가를 맞춘다.
+
+        `price_daily` 는 원주가라 이날부터 가격이 기계적으로 바뀐다. 수량을
+        함께 바꾸지 않으면 평가액이 증발하고 손절이 헛발동한다.
+
+        **대기 주문의 수량은 어제 정한 것이라 조정 전 수량이다.** 매도가
+        모자라게 나가면 남은 만큼은 다음 주기에 `manage` 가 다시 판다.
+        주문을 여기서 다시 계산하지 않는다.
+        """
+        for stock_id, ratio in self.market.adjustments(day):
+            if stock_id not in self.portfolio.positions:
+                continue
+            log.info("%s %s 권리락 반영 (비율 %s)", day, stock_id, ratio)
+            self.portfolio.adjust(stock_id, ratio)
 
     def _liquidate_delisted(self, day: date) -> None:
         """보유 중 폐지된 종목을 **정리매매 마지막 가격**으로 청산한다.

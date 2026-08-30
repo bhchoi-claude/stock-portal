@@ -22,10 +22,11 @@ NO_COST = {"fee_rate": 0, "slippage_rate": 0, "tax_rate": {"KOSPI": 0}}
 class FakeMarket:
     """가격이 매일 같은 시장. 값이 아니라 순서를 시험한다."""
 
-    def __init__(self, opens=None, closes=None, delisted=None):
+    def __init__(self, opens=None, closes=None, delisted=None, actions=None):
         self.opens = opens or {}
         self.closes = closes or {}
         self.delisted = delisted or {}
+        self.actions = actions or {}
 
     def trading_days(self, start, end):
         return [day for day in DAYS if start <= day <= end]
@@ -47,6 +48,9 @@ class FakeMarket:
 
     def delisted_at(self, stock_id):
         return self.delisted.get(stock_id)
+
+    def adjustments(self, day):
+        return self.actions.get(day, [])
 
 
 class FakeFeed:
@@ -232,3 +236,25 @@ def test_execution_keeps_the_reason_and_the_payload():
         for ex in result.executions
         if ex.reason == "entry"
     )
+
+
+def test_holding_is_adjusted_on_the_effective_day():
+    """권리락일에 보유 수량이 맞춰진다. 안 맞추면 평가액이 그날 증발한다."""
+    market = FakeMarket(actions={DAYS[2]: [(STOCKS[0], Decimal(2))]})
+    loop = make_loop(market=market)
+
+    # 이틀째 시가에 산다. 사흘째가 권리락이다
+    loop.run(DAYS[:3])
+    held = loop.portfolio.positions.get(STOCKS[0])
+
+    assert held is not None, "권리락 전에 사지 못했다"
+    assert held.quantity % 2 == 0  # 배로 늘었다
+
+
+def test_adjustment_skips_stocks_we_do_not_hold():
+    market = FakeMarket(actions={DAYS[1]: [("KRX:999999", Decimal(2))]})
+    loop = make_loop(market=market)
+
+    loop.run(DAYS)  # 들고 있지 않은 종목이라 아무 일도 없어야 한다
+
+    assert "KRX:999999" not in loop.portfolio.positions

@@ -57,3 +57,59 @@ def test_equity_falls_back_to_the_average_price():
     assert portfolio.equity({STOCK: Decimal(20000)}) == portfolio.cash + Decimal(
         200_000
     )
+
+
+def test_split_keeps_the_value_and_the_stop_distance():
+    """권리락은 부를 바꾸지 않는다. 수량과 평단가가 반비례로 움직인다.
+
+    조정하지 않으면 분할일이 급락으로 보여 손절이 대량 발동한다
+    (PROJECT.md 11장).
+    """
+    portfolio, executor = make()
+    portfolio.apply(executor.buy(STOCK, DAY, Decimal(20000), 10))
+    before = portfolio.positions[STOCK]
+    cost = before.avg_price * before.quantity
+
+    portfolio.adjust(STOCK, Decimal(2))  # 1:2 액면분할
+    after = portfolio.positions[STOCK]
+
+    assert after.quantity == 20
+    assert after.avg_price * after.quantity == cost
+    # 원주가가 반토막 나도 평단가가 함께 반토막이라 손절이 헛발동하지 않는다
+    assert after.avg_price == before.avg_price / 2
+
+
+def test_reverse_split_reduces_the_quantity():
+    portfolio, executor = make()
+    portfolio.apply(executor.buy(STOCK, DAY, Decimal(1000), 100))
+    cost = portfolio.positions[STOCK].avg_price * 100
+
+    portfolio.adjust(STOCK, Decimal("0.1"))  # 10:1 병합
+    after = portfolio.positions[STOCK]
+
+    assert after.quantity == 10
+    assert after.avg_price * after.quantity == cost
+
+
+def test_adjustment_never_drops_the_position():
+    """한 주 밑으로 줄어드는 감자여도 값을 버리지 않는다."""
+    portfolio, executor = make()
+    portfolio.apply(executor.buy(STOCK, DAY, Decimal(10000), 10))
+    cost = portfolio.positions[STOCK].avg_price * 10
+
+    portfolio.adjust(STOCK, Decimal("0.02"))  # 50:1 감자
+    after = portfolio.positions[STOCK]
+
+    assert after.quantity == 1
+    assert after.avg_price * after.quantity == cost
+
+
+def test_equity_is_unchanged_when_the_price_adjusts_with_it():
+    """분할일에 평가액이 그대로여야 한다. 증발하면 결과가 통째로 틀린다."""
+    portfolio, executor = make()
+    portfolio.apply(executor.buy(STOCK, DAY, Decimal(20000), 10))
+    before = portfolio.equity({STOCK: Decimal(20000)})
+
+    portfolio.adjust(STOCK, Decimal(2))
+
+    assert portfolio.equity({STOCK: Decimal(10000)}) == before

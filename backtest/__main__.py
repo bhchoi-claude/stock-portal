@@ -16,6 +16,7 @@ from common.feed.backtest import BacktestFeed
 from common.risk import RiskManager
 from common.strategy.base import Strategy
 from common.strategy.dummy import DummyStrategy
+from common.strategy.swing import SwingStrategy
 
 from .execution import Executor
 from .loop import BacktestLoop, BacktestResult
@@ -25,8 +26,11 @@ from .portfolio import Portfolio
 
 log = logging.getLogger(__name__)
 
-# 지금은 더미뿐이다. 실전 전략은 Phase 7 에서 붙인다
-STRATEGIES: dict[str, type[Strategy]] = {"dummy": DummyStrategy}
+# 더미는 틀 검증용이다. 결과의 좋고 나쁨에 뜻이 없다
+STRATEGIES: dict[str, type[Strategy]] = {
+    "dummy": DummyStrategy,
+    "swing": SwingStrategy,
+}
 
 
 def main(argv: list[str] | None = None) -> int:

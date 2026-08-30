@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
+from decimal import Decimal
 
 import psycopg
 from psycopg.types.json import Jsonb
@@ -100,3 +102,17 @@ def update_action_type(
         (action_type, adjusts_price, source, style, action_id),
     )
     return cur.rowcount
+
+
+def adjustments_on(cur: psycopg.Cursor, day: date) -> list[tuple[str, Decimal]]:
+    """그날 효력이 발생하는 조정 이벤트. 백테스트가 보유 수량을 맞추는 데 쓴다.
+
+    `price_daily` 는 원주가를 담으므로 권리락일부터 가격이 기계적으로 바뀐다.
+    보유 수량을 함께 바꾸지 않으면 평가액이 그날 증발하거나 부풀어 오른다.
+    """
+    cur.execute(
+        "SELECT stock_id, ratio FROM corporate_action"
+        " WHERE adjusts_price AND ratio > 0 AND effective_date = %s",
+        (day,),
+    )
+    return cur.fetchall()

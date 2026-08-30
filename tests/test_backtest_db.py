@@ -1,9 +1,12 @@
 # backtest_run·backtest_trade 적재. DB 통합 테스트라 롤백된다
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
+import pytest
+
 from backtest.metrics import Trade
+from common.db.actions import adjustments_on
 from common.db.backtest import delisted_between, insert_run, insert_trades
 
 FROM = date(2025, 3, 4)
@@ -131,3 +134,22 @@ def test_delisted_between_counts_both(cur):
     delisted, with_prices = delisted_between(cur, date(2025, 1, 1), date(2025, 12, 31))
 
     assert delisted >= with_prices >= 0
+
+
+def test_adjustments_on_reads_only_that_day(cur):
+    """권리락일 조회. 백테스트가 보유 수량을 맞추는 근거다."""
+    cur.execute(
+        "SELECT stock_id, effective_date FROM corporate_action"
+        " WHERE adjusts_price AND ratio > 0 LIMIT 1"
+    )
+    row = cur.fetchone()
+    if row is None:
+        pytest.skip("조정 이벤트가 아직 없습니다")
+
+    stock_id, day = row
+    found = adjustments_on(cur, day)
+
+    assert stock_id in [s for s, _ in found]
+    assert all(isinstance(ratio, Decimal) for _, ratio in found)
+    # 하루치만 나온다. 다른 날 이벤트가 섞이면 수량이 두 번 조정된다
+    assert adjustments_on(cur, day + timedelta(days=1)) != found or not found

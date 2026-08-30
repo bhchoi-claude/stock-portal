@@ -8,6 +8,7 @@ from typing import Protocol
 
 import psycopg
 
+from common.db.actions import adjustments_on
 from common.db.master import delisted_dates
 from common.db.prices import board_at, open_on, raw_close, trading_days
 
@@ -29,6 +30,8 @@ class Market(Protocol):
     def board_at(self, stock_id: str, day: date) -> str | None: ...
 
     def delisted_at(self, stock_id: str) -> date | None: ...
+
+    def adjustments(self, day: date) -> list[tuple[str, Decimal]]: ...
 
 
 class DbMarket:
@@ -57,3 +60,7 @@ class DbMarket:
 
     def delisted_at(self, stock_id: str) -> date | None:
         return self._delisted.get(stock_id)
+
+    def adjustments(self, day: date) -> list[tuple[str, Decimal]]:
+        """그날 효력이 발생하는 조정 이벤트. (종목, 주식수 비)."""
+        return adjustments_on(self.cur, day)

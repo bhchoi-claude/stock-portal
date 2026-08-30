@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from common.types import Position, Side
 
@@ -28,6 +28,30 @@ class Portfolio:
             self._add(fill)
         else:
             self._reduce(fill)
+
+    def adjust(self, stock_id: str, ratio: Decimal) -> None:
+        """권리락. 수량과 평단가를 반비례로 바꾼다. **평가액은 그대로다.**
+
+        분할하면 원주가가 기계적으로 반토막 난다. 수량을 함께 늘리지 않으면
+        평가액이 그날 증발하고, 평단가를 함께 줄이지 않으면 손절이 대량
+        발동한다 (PROJECT.md 11장 수정주가).
+
+        단주는 모사하지 않는다. 반올림하되 **원가 총액을 보존한다.**
+        실제로는 현금 정산되지만 백테스트 근사로 받아들인다.
+        """
+        held = self.positions[stock_id]
+        quantity = int((held.quantity * ratio).to_integral_value(ROUND_HALF_UP))
+        if quantity <= 0:
+            # 한 주 밑으로 줄어드는 감자. 전부 단주가 되지만 값을 버리지 않는다
+            quantity = 1
+
+        cost = held.avg_price * held.quantity
+        self.positions[stock_id] = Position(
+            account_id=self.account_id,
+            stock_id=stock_id,
+            quantity=quantity,
+            avg_price=cost / quantity,
+        )
 
     def equity(self, prices: dict[str, Decimal]) -> Decimal:
         """현금 + 평가금액. 값이 없는 종목은 평단가로 본다."""
