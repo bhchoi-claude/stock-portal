@@ -104,7 +104,7 @@ def test_dummy_strategy_completes_a_run():
     result = make_loop().run(DAYS)
 
     assert len(result.equity_curve) == len(DAYS)
-    assert result.fills
+    assert result.executions
     assert all(day in DAYS for day, _ in result.equity_curve)
 
 
@@ -112,7 +112,7 @@ def test_nothing_fills_on_the_first_day():
     """첫날은 전일 종가에 정한 주문이 없다. 체결은 이틀째부터다."""
     result = make_loop().run(DAYS)
 
-    assert min(fill.day for fill in result.fills) == DAYS[1]
+    assert min(ex.fill.day for ex in result.executions) == DAYS[1]
 
 
 def test_signal_day_and_fill_day_are_different():
@@ -120,8 +120,8 @@ def test_signal_day_and_fill_day_are_different():
     result = make_loop().run(DAYS[:2])
 
     # 첫날 종가에 정한 매수가 둘째 날 시가에 체결된다
-    assert all(fill.day == DAYS[1] for fill in result.fills)
-    assert all(fill.side is Side.BUY for fill in result.fills)
+    assert all(ex.fill.day == DAYS[1] for ex in result.executions)
+    assert all(ex.fill.side is Side.BUY for ex in result.executions)
 
 
 def test_feed_never_looks_past_the_cursor():
@@ -186,8 +186,10 @@ def test_order_is_cancelled_when_the_stock_does_not_trade():
     result = loop.run(DAYS)
 
     assert not any(
-        fill.stock_id == STOCKS[0] and fill.side is Side.BUY and fill.day >= DAYS[1]
-        for fill in result.fills
+        ex.fill.stock_id == STOCKS[0]
+        and ex.fill.side is Side.BUY
+        and ex.fill.day >= DAYS[1]
+        for ex in result.executions
     )
 
 
@@ -202,12 +204,13 @@ def test_delisted_position_is_liquidated_at_the_last_price():
     result = loop.run(DAYS)
 
     liquidation = [
-        fill
-        for fill in result.fills
-        if fill.stock_id == STOCKS[0] and fill.side is Side.SELL
+        ex
+        for ex in result.executions
+        if ex.fill.stock_id == STOCKS[0] and ex.fill.side is Side.SELL
     ]
     assert liquidation, "폐지 종목이 청산되지 않았다"
-    assert liquidation[0].day == DAYS[1]  # 마지막 거래일
+    assert liquidation[0].fill.day == DAYS[1]  # 마지막 거래일
+    assert liquidation[0].reason == "delisted"
     assert STOCKS[0] not in loop.portfolio.positions
 
 
@@ -217,3 +220,15 @@ def test_position_limit_is_enforced_by_risk_not_strategy():
     loop.run(DAYS)
 
     assert len(loop.portfolio.positions) <= LIMITS["risk"]["max_positions"]
+
+
+def test_execution_keeps_the_reason_and_the_payload():
+    """체결만 남기면 청산 사유가 사라진다. backtest_trade 가 그것을 요구한다."""
+    result = make_loop().run(DAYS)
+
+    assert {ex.reason for ex in result.executions} == {"entry", "timeout"}
+    assert all(
+        ex.payload == {"reason": "dummy"}
+        for ex in result.executions
+        if ex.reason == "entry"
+    )

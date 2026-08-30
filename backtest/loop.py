@@ -28,6 +28,20 @@ class Order:
     side: Side
     quantity: int
     reason: str  # 진입은 'entry', 청산은 ExitIntent.reason
+    payload: dict[str, Any] | None = None  # 진입 근거. backtest_trade 에 남는다
+
+
+@dataclass(frozen=True)
+class Execution:
+    """체결과 **왜 그랬는지**. 체결만 남기면 청산 사유가 사라진다.
+
+    `Fill` 에 넣지 않은 것은 체결 시뮬레이터가 이유를 모르기 때문이다.
+    수수료 계산에 사유는 필요 없다. 아는 쪽인 루프가 붙인다.
+    """
+
+    fill: Fill
+    reason: str
+    payload: dict[str, Any] | None = None
 
 
 @dataclass
@@ -35,7 +49,7 @@ class BacktestResult:
     initial_capital: Decimal
     final_capital: Decimal
     equity_curve: list[tuple[date, Decimal]] = field(default_factory=list)
-    fills: list[Fill] = field(default_factory=list)
+    executions: list[Execution] = field(default_factory=list)
 
 
 class BacktestLoop:
@@ -72,7 +86,7 @@ class BacktestLoop:
         self.portfolio = portfolio
         self.params = params
         self.pending: list[Order] = []
-        self.fills: list[Fill] = []
+        self.executions: list[Execution] = []
 
     def run(self, days: list[date]) -> BacktestResult:
         initial = self.portfolio.cash
@@ -105,7 +119,7 @@ class BacktestLoop:
             initial_capital=initial,
             final_capital=equity,
             equity_curve=curve,
-            fills=self.fills,
+            executions=self.executions,
         )
 
     # --- 하루의 각 단계 -------------------------------------------------
@@ -130,7 +144,7 @@ class BacktestLoop:
                 else self._sell(order, day, open_price)
             )
             if fill is not None:
-                self._record(fill)
+                self._record(fill, order.reason, order.payload)
 
     def _liquidate_delisted(self, day: date) -> None:
         """보유 중 폐지된 종목을 **정리매매 마지막 가격**으로 청산한다.
@@ -157,7 +171,7 @@ class BacktestLoop:
                 self.market.board_at(stock_id, last_day) or "",
             )
             log.info("%s 폐지로 %s 에 청산합니다", stock_id, last_day)
-            self._record(fill)
+            self._record(fill, "delisted")
 
     def _plan(self, ctx: Context) -> list[Order]:
         """오늘 종가로 내일 낼 주문을 정한다.
@@ -178,7 +192,13 @@ class BacktestLoop:
                 log.debug("%s 진입 거부: %s", intent.stock_id, decision.reason)
                 continue
             orders.append(
-                Order(intent.stock_id, intent.side, decision.quantity, "entry")
+                Order(
+                    intent.stock_id,
+                    intent.side,
+                    decision.quantity,
+                    "entry",
+                    intent.payload,
+                )
             )
         return orders
 
@@ -242,6 +262,8 @@ class BacktestLoop:
             ),
         )
 
-    def _record(self, fill: Fill) -> None:
+    def _record(
+        self, fill: Fill, reason: str, payload: dict[str, Any] | None = None
+    ) -> None:
         self.portfolio.apply(fill)
-        self.fills.append(fill)
+        self.executions.append(Execution(fill, reason, payload))
