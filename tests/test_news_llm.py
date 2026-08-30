@@ -74,12 +74,15 @@ def test_out_of_range_index_is_dropped():
     assert extractor.extract(["가", "나"]).keywords == {}
 
 
-def test_schema_pins_the_count():
+def test_schema_has_no_item_count():
+    """minItems 는 0 이나 1 만 받는다. 개수는 스키마로 못박을 수 없다."""
     extractor = _extractor('{"results": []}')
     extractor.extract(["가", "나", "다"])
-    schema = extractor.client.messages.kwargs["output_config"]["format"]["schema"]
-    assert schema["properties"]["results"]["minItems"] == 3
-    assert schema["properties"]["results"]["maxItems"] == 3
+    results = extractor.client.messages.kwargs["output_config"]["format"]["schema"][
+        "properties"
+    ]["results"]
+    assert "minItems" not in results
+    assert results["items"]["required"] == ["index", "keywords"]
 
 
 def test_json_format_is_forced():

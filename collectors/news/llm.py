@@ -22,35 +22,30 @@ SYSTEM = """너는 한국 주식 시장 글에서 키워드를 뽑는다.
   키워드가 없는 글도 빈 배열로 답한다. 건너뛰지 않는다"""
 
 
-def schema_for(count: int) -> dict[str, Any]:
-    """글 번호를 함께 받는다.
-
-    번호가 없으면 개수가 어긋났을 때 어느 글의 결과인지 알 수 없어 배치를
-    통째로 버려야 한다. 20건 중 19건이 멀쩡해도 다 버렸다 (2026-08-30).
-
-    개수도 함께 못박는다. 지켜지면 누락 자체가 없어진다.
-    """
-    return {
-        "type": "object",
-        "properties": {
-            "results": {
-                "type": "array",
-                "minItems": count,
-                "maxItems": count,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "index": {"type": "integer"},
-                        "keywords": {"type": "array", "items": {"type": "string"}},
-                    },
-                    "required": ["index", "keywords"],
-                    "additionalProperties": False,
+# 글 번호를 함께 받는다. 번호가 없으면 개수가 어긋났을 때 어느 글의 결과인지
+# 알 수 없어 배치를 통째로 버려야 한다. 20건 중 19건이 멀쩡해도 다 버렸다.
+#
+# 개수는 스키마로 못박을 수 없다. minItems 는 0 이나 1 만 받는다
+# (400 invalid_request_error, 2026-08-30 실측). 번호로 감당한다
+SCHEMA = {
+    "type": "object",
+    "properties": {
+        "results": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "index": {"type": "integer"},
+                    "keywords": {"type": "array", "items": {"type": "string"}},
                 },
-            }
-        },
-        "required": ["results"],
-        "additionalProperties": False,
-    }
+                "required": ["index", "keywords"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["results"],
+    "additionalProperties": False,
+}
 
 
 # 사전에 넣기에 너무 긴 표현은 문장이지 키워드가 아니다
@@ -89,9 +84,7 @@ class KeywordExtractor:
             system=SYSTEM,
             messages=[{"role": "user", "content": self._prompt(texts)}],
             # 형식을 강제한다. 전문이나 코드펜스가 섞일 자리를 없앤다
-            output_config={
-                "format": {"type": "json_schema", "schema": schema_for(len(texts))}
-            },
+            output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
         )
 
         text = next(block.text for block in response.content if block.type == "text")
