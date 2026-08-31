@@ -1,0 +1,27 @@
+[Unit]
+Description=stock-portal 스윙 매매 엔진
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+# 계속 실패하면 포기하고 멈춘다. 무한 재시작은 로그만 채우고 화면에는
+# 살아 있는 것처럼 보인다 (deploy/stock-portal-news.service 와 같은 판단)
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+
+# 24시간 상주한다. 끊기면 다시 붙되, 재시작마다 재시작 복구가 증권사와
+# 대조하므로 (INTERFACES.md 2.2) 몰아치지 않도록 여유를 둔다
+Restart=always
+RestartSec=30
+
+ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m engines.swing
+
+StandardOutput=append:/home/bh-server/stock-portal/logs/swing.log
+StandardError=append:/home/bh-server/stock-portal/logs/swing.log
+
+[Install]
+WantedBy=multi-user.target

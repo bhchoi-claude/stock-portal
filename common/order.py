@@ -12,6 +12,7 @@ import psycopg
 from .broker.base import Broker, OrderRequest, OrderResult
 from .db.conn import transaction
 from .db.orders import apply_result, record_pending
+from .db.signals import consume
 from .types import OrderType, Side
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ def place_order(
     order_type: OrderType,
     quantity: int,
     price: Decimal | None = None,
+    signal_id: int | None = None,
 ) -> OrderResult:
     """`INTERFACES.md` 2.1 의 네 단계를 그대로 따른다.
 
@@ -61,6 +63,11 @@ def place_order(
     3번에서 예외가 나면 **재시도하지 않는다** (CLAUDE.md 3). 행은
     `pending` 으로 남는다. 접수 여부는 `get_order_status` 로 확인한 뒤
     판단한다. 예외를 그대로 올려보내 호출부가 알게 한다.
+
+    `signal_id` 를 주면 **같은 트랜잭션에서** 그 신호를 소비 처리한다.
+    나눠서 하면 안 된다 — 기록과 소비 사이에 프로세스가 죽으면 신호가
+    남아 있어 다음 폴링이 같은 주문을 또 낸다. `client_order_id` 는
+    부를 때마다 새로 만들어지므로 UNIQUE 가 그것을 막지 못한다.
     """
     client_order_id = new_client_order_id()
 
@@ -75,7 +82,10 @@ def place_order(
             order_type=order_type,
             quantity=quantity,
             price=price,
+            signal_id=signal_id,
         )
+        if signal_id is not None:
+            consume(cur, signal_id)
 
     request = OrderRequest(
         client_order_id=client_order_id,

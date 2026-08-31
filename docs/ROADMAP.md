@@ -379,16 +379,17 @@ Phase 6 에서 더미가 통과한 백테스트 틀에 결함 둘(유니버스 �
 
 ### 작업
 
-- [ ] `Broker.submit_order`, `cancel_order`, `get_order_status` 구현
-- [ ] `Broker.get_balance`, `get_positions` 구현 (Phase 2 에서 이관)
-- [ ] **중복 주문 방지** (`client_order_id` 선기록)
-- [ ] 재시작 복구 (미체결 주문 대조)
-- [ ] `LiveFeed` 구현
-- [ ] `engine-swing` 프로세스
-- [ ] `command` 폴링 (정지, 진입차단, 청산)
-- [ ] `heartbeat` 기록
-- [ ] `position` 대조 로직
-- [ ] `daily_pnl` 스냅샷
+- [x] `Broker.submit_order`, `cancel_order`, `get_order_status` 구현 (2026-08-31)
+      — **주문 성공 응답만 미실측이다.** 장중 시험주문으로 닫는다
+- [x] `Broker.get_balance`, `get_positions` 구현 (2026-08-31)
+- [x] **중복 주문 방지** (`client_order_id` 선기록) (2026-08-31)
+- [x] 재시작 복구 (미체결 주문 대조) (2026-08-31)
+- [x] `LiveFeed` 구현 (2026-08-31)
+- [x] `engine-swing` 프로세스 (2026-08-31)
+- [x] `command` 폴링 (정지, 진입차단, 청산) (2026-08-31)
+- [x] `heartbeat` 기록 (2026-08-31)
+- [x] `position` 대조 로직 (2026-08-31) — 어긋나면 **진입만** 막는다
+- [x] `daily_pnl` 스냅샷 (2026-08-31) — `realized_pnl` 은 원가를 몰라 비워둔다
 - [ ] 자동매매 탭 화면, 제외·허용 목록
 - [ ] 비상 중단 버튼
 

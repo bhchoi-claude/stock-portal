@@ -535,23 +535,53 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
 
 ## 4단계 — engine-swing 프로세스
 
-- [ ] `config/engine.yaml` — 시각표·주기를 설정으로 뺀다 (CLAUDE.md 1)
-- [ ] `common/db/signals.py` — 계획 적재 / 미소비 조회 / `consume`
-- [ ] `common/db/commands.py` — 폴링 / `ack` / 완료
-- [ ] `common/db/positions.py` — 브로커 잔고 대조와 업서트
-- [ ] `common/db/pnl.py` — `daily_pnl` 스냅샷
-- [ ] `engines/swing/schedule.py` — 시각표 판정. **순수 함수로 뺀다.**
-      상주 루프 안에 시각 분기를 묻으면 테스트할 수가 없다
-- [ ] **19:00 판단 전에 `price_daily` 에 그날 일봉이 있는지 본다.**
-      없으면 그날 판단을 건너뛴다. `LiveFeed.get_universe()` 는 빈 목록을
-      줄 뿐이라 '후보 없음' 과 구분되지 않는다
-- [ ] 하루 주기 루프. 백테스트 루프와 순서가 같아야 한다
-- [ ] `command` 폴링 — 정지, 진입차단, 청산
-- [ ] `heartbeat` 기록
-- [ ] 재시작 복구 — **미체결 주문 대조**
-- [ ] `position` 대조 — 어긋나면 브로커 값으로 덮어쓰고 **진입만 막는다**
-- [ ] `daily_pnl` 스냅샷 (15:40)
-- [ ] systemd 유닛 (`deploy/`)
+- [x] `config/engine.yaml` — 시각표·주기를 설정으로 뺐다
+- [x] `common/db/signals.py` — 계획 적재 / 미소비 조회 / `consume`
+- [x] `common/db/commands.py` — 폴링 / `ack` / 완료
+- [x] `common/db/positions.py` — 브로커 잔고 대조와 업서트
+- [x] `common/db/pnl.py` — `daily_pnl` 스냅샷.
+      **`realized_pnl` 은 비워둔다** — `execution` 적재가 없어 매도 원가를
+      모른다. 0 을 적지 않는다. 스윙 주 지표는 `unrealized_pnl` 이다
+- [x] `engines/swing/schedule.py` — '지났는데 안 했으면 한다'. 순수 함수라
+      경계 조건을 전부 테스트했다 (9건)
+- [x] **19:00 판단 전에 `price_daily` 에 그날 일봉이 있는지 본다.**
+      없으면 20분 간격으로 여섯 번까지 다시 보고, 그래도 없으면 그날을
+      건너뛴다
+- [x] 하루 주기 루프. `manage` 가 `scan` 보다 먼저인 것까지 백테스트와 같다
+- [x] `command` 폴링 — 정지, 진입차단, 전량청산, 개별청산
+- [x] `heartbeat` 기록 (60초). `portal.yaml` 에 프로세스를 등록했다
+- [x] 재시작 복구 — **미체결 주문 대조.** 주문번호가 없는 행
+      (= 응답을 못 받은 주문)은 조회할 방법이 없어 진입을 막고 남긴다
+- [x] `position` 대조 — 어긋나면 브로커 값으로 덮어쓰고 **진입만 막는다**
+- [x] `daily_pnl` 스냅샷 (15:40)
+- [x] systemd 유닛 `deploy/stock-portal-swing.service` + README
+- [ ] **서버에서 확인한다.** 로컬은 `DATABASE_URL` 이 없어 26건이 skip 된다
+
+### 공휴일을 달력 없이 처리한다
+
+`exchange_holiday` 는 **일봉에서 역산해** 채워져 앞으로의 휴일을 모른다.
+그래서 달력으로 거르지 않는다.
+
+계획은 **그것을 만든 일봉이 여전히 최신일 때만** 유효하다
+(`_plan_basis`). 월요일이 휴장이면 화요일 아침에도 마지막 일봉이 금요일치라
+금요일 저녁 계획이 그대로 살아 있다. 반대로 엔진이 이틀 쉬었으면 최신
+일봉이 넘어가 있어 낡은 계획이 자동으로 걸러진다.
+
+주말만 `schedule.py` 가 요일로 거른다.
+
+### 실패한 일은 그날 다시 하지 않는다 (한계)
+
+네 가지 일 모두 **시작할 때** `done` 에 찍는다. 08:30 제출이 브로커 오류로
+터지면 그날은 다시 시도하지 않는다. `event_log` 에 ERROR 가 남고 heartbeat
+가 `error` 가 되지만, 주문 자체는 못 나간다.
+
+재시도로 바꾸지 않은 이유는 **`_plan` 이 멱등이 아니기 때문이다.** 계획을
+절반 남기고 터진 뒤 다시 돌면 같은 종목의 신호가 둘이 되고, 다음 날 아침에
+주문이 두 번 나간다. 일마다 다르게 처리하면 규칙이 흩어진다.
+
+`_submit` 은 소비된 신호를 다시 읽지 않아 멱등이다. 재시도가 필요해지면
+거기부터 열면 된다. 지금은 브로커 어댑터가 `TransientError` 를 세 번까지
+재시도하므로 일시 장애는 그 아래에서 걸러진다.
 
 ## 5단계 — 포털 화면
 

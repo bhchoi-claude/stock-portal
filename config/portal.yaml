@@ -36,6 +36,9 @@ processes:
   - name: telegram
     label: 텔레그램 수집
     stale_after_minutes: 10
+  - name: engine-swing
+    label: 스윙 매매 엔진
+    stale_after_minutes: 10
 
   # 10분마다 도는 배치. 한 번쯤 걸러도 이상하지 않게 여유를 둔다
   - name: news_analyze

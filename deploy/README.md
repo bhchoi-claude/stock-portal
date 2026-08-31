@@ -179,3 +179,39 @@ UPDATE raw_message SET analyzed_at = NULL, analysis_method = NULL;
 LLM 비용은 `api_usage` 에 쌓인다. 일일 상한은 `config/limits.yaml` 이고,
 넘으면 그날은 호출하지 않고 텔레그램으로 알린다. 분석되지 않은 원문은
 표시가 비어 있어 다음 날 이어서 처리된다.
+
+## 스윙 매매 엔진
+
+24시간 상주한다. **장중에 재시작하지 않는다** — 배포는 15:40 이후다
+(`CLAUDE.md` 배포).
+
+```bash
+sudo cp deploy/stock-portal-swing.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now stock-portal-swing.service
+tail -f logs/swing.log
+```
+
+내부 시각표로 하루를 돈다 (`config/engine.yaml`).
+
+| 시각 | 하는 일 |
+|---|---|
+| 08:30 | 전날 계획을 동시호가 시장가로 제출 |
+| 09:00~15:30 | 체결 추적(60초 간격), `command` 폴링(10초) |
+| 15:30 | 미체결 잔량 취소 |
+| 15:40 | `daily_pnl` 스냅샷 |
+| 19:00 | 일봉 확인 → `scan`·`manage` → 다음 날 계획을 `signal` 에 기록 |
+
+굴릴 계좌는 `config/engine.yaml` 의 `account_id` 이고, `accounts.yaml` 에서
+`is_active` 가 아니면 **시작하지 않는다.** 실계좌가 이 경로로 걸린다.
+
+19:00 에 일봉이 아직 없으면 20분 간격으로 여섯 번까지 다시 본다. 그래도
+없으면 **그날 판단을 건너뛴다.** '데이터가 없어서 안 샀다' 는 안전한
+실패다.
+
+멈추거나 진입을 막으려면 `command` 테이블에 넣는다. 엔진이 10초마다
+폴링한다. 화면 버튼은 5단계에서 붙는다.
+
+```sql
+INSERT INTO command (target, action, issued_by) VALUES ('engine-swing', 'halt_entry', 'manual');
+```

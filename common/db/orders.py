@@ -45,6 +45,7 @@ def record_pending(
     order_type: OrderType,
     quantity: int,
     price: Decimal | None = None,
+    signal_id: int | None = None,
 ) -> int:
     """주문을 내기 **전에** 기록한다. `status='pending'`.
 
@@ -61,8 +62,8 @@ def record_pending(
             """
             INSERT INTO order_request
                 (client_order_id, account_id, stock_id, side,
-                 order_type, quantity, price, status)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, 'pending')
+                 order_type, quantity, price, signal_id, status)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending')
             RETURNING order_id
             """,
             (
@@ -73,6 +74,7 @@ def record_pending(
                 order_type.value,
                 quantity,
                 price,
+                signal_id,
             ),
         )
     except psycopg.errors.UniqueViolation as exc:

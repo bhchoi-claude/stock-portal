@@ -53,6 +53,13 @@ swing:
   plan_retry_min: 20
   plan_retry_max: 6
 
+  # 체결 추적을 시작할 시각. 끝은 cancel_time 이다
+  track_from: "09:00"
+
+  # 체결 추적 간격(초). **틱마다 부르면 안 된다** — get_order_status 는
+  # 목록 API 둘을 부르고 api-id 별 유량이 초당 1건이다 (2026-08-31 실측)
+  fill_poll_sec: 60
+
   # 브로커 잔고와 position 이 어긋난 것으로 볼 수량 차이.
   # 0 이면 한 주만 달라도 진입을 막는다
   position_tolerance: 0
