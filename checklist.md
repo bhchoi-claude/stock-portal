@@ -446,8 +446,8 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
       늦게 도착한 오래된 응답도 같이 막힌다
 - [x] 응답 없음 → 예외를 올리고 행은 `pending` 으로 남는다.
       **재시도하지 않는다**
-- [ ] **서버에서 DB 테스트 7건을 돌려 확인한다.** 로컬은 `DATABASE_URL`
-      이 없어 skip 된다
+- [x] **서버에서 확인했다** (2026-08-31). `tests/test_orders.py` 12건 통과.
+      로컬은 `DATABASE_URL` 이 없어 skip 되므로 서버에서만 확인된다
 
 ### ULID 를 직접 구현했다 (2026-08-31 확인 사항)
 
