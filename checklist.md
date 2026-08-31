@@ -208,29 +208,107 @@ API 가이드가 SPA 라 본문이 안 열리고 모의투자 지원/미지원 �
 **주문이 실제로 되는지는 한 번 내봐야 안다.** 모의투자 계좌에서 사용자가
 직접 소량으로 시험한다. 조회가 통과한 뒤에 한다.
 
-### 다음에 할 것 — 장중 시험주문 (장이 열려야 한다)
+### 장중 시험주문 절차 — 1단계를 닫는 마지막 작업
 
-19:06 에 던진 주문은 `모의투자 장종료` 로 막혔다. **성공 응답은 장중에만
-나온다.** 다음 개장 때 아래를 낸다.
+19:06 에 던진 주문은 `모의투자 장종료` 로 막혔다. **주문 성공 응답은
+장중에만 나온다.** 남은 세 가지를 이 한 건으로 전부 실측한다.
 
-**먼저 서버에서 `git pull` 을 한다.** 재시도하지 않는 `_call_once` 가
-서버에 있어야 한다. 옛 probe 는 `_call` 을 불러 재시도하므로, 응답을 못
-받으면 시험주문이 두 번 나간다.
+- `submit_order` 성공 응답의 주문번호 필드 (`ord_no` 로 예상)
+- 미체결 상태에서 `get_order_status` 가 실제로 도는지
+- `cancel_order` 응답과 **취소된 주문이 목록에서 사라지는지**
 
+**하한가 지정가 1주를 쓴다.** 정상 접수되면서 체결되지 않는다. 하한가는
+살 수 있는 가장 낮은 가격이라, 체결되려면 그날 하한가까지 떨어져야 한다.
+
+주문은 사용자가 직접 낸다.
+
+#### 0. pull 먼저 (빠뜨리면 위험하다)
+
+```bash
+cd ~/stock-portal && git pull
 ```
-kt10000 /api/dostk/ordr
-{"dmst_stex_tp":"KRX","stk_cd":"005930","ord_qty":"1",
- "ord_uv":"<하한가>","trde_tp":"0"}
+
+재시도하지 않는 `_call_once` 가 서버에 있어야 한다. 옛 `probe.py` 는
+`_call` 을 불러 재시도하므로, **응답을 못 받으면 주문이 두 번 나간다.**
+2026-08-31 에 실제로 서버가 이 상태였다.
+
+#### 1. 오늘의 하한가를 다시 읽는다
+
+```bash
+cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10001 /api/dostk/stkinfo '{"stk_cd":"005930"}'
 ```
 
-**하한가 지정가 1주다.** 정상 접수되면서 체결되지 않는다. 하한가는
-`ka10001` 의 `lst_pric` 이 준다 (2026-08-31 기준 180,000).
+응답의 **`lst_pric`** 이 하한가다 (`upl_pric` 은 상한가).
 
-이 한 건으로 남은 셋을 전부 실측한다.
+**어제 값 180,000 을 재사용하지 않는다.** 기준가는 매일 바뀐다. 기준가가
+내려가면 어제 하한가가 오늘 시세보다 높아져 **바로 체결된다.**
 
-- `submit_order` 성공 응답의 주문번호 필드
-- 미체결로 남아 있는 동안 `get_order_status`
-- 그 뒤 `cancel_order`
+#### 2. 주문을 낸다 (08:35 또는 09:05)
+
+```bash
+cd ~/stock-portal && .venv/bin/python -m common.broker.probe kt10000 /api/dostk/ordr '{"dmst_stex_tp":"KRX","stk_cd":"005930","ord_qty":"1","ord_uv":"<1번의 lst_pric>","trde_tp":"0"}'
+```
+
+**08:35 에 먼저 해본다.** 장 시작 동시호가에 주문이 접수되는지가 확인된다
+— 운영 계획이 08:30 동시호가 시장가 제출이라 반드시 알아야 하는 값이다.
+거부되면 09:05 에 다시 낸다.
+
+응답의 주문번호를 **그대로 적어둔다.** 7자리 제로패딩이다 (`"0060503"`).
+
+#### 3. 미체결에 뜨는지 본다
+
+```bash
+cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10075 /api/dostk/acnt '{"all_stk_tp":"0","trde_tp":"0","stex_tp":"1"}'
+```
+
+우리 주문번호가 있어야 한다. **미체결 주문의 `ord_stt` 값을 확인한다** —
+지금까지 본 것은 `"체결"` 하나뿐이라 접수 상태의 어휘를 모른다.
+
+#### 4. 구현한 코드로 조회한다
+
+probe 가 아니라 `get_order_status` 자체를 돌린다. 파서까지 확인된다.
+
+```bash
+cd ~/stock-portal && .venv/bin/python -c "
+from common.broker.kiwoom import KiwoomBroker
+b = KiwoomBroker(is_paper=True)
+print(b.get_order_status('paper', '<2번의 주문번호>', 'TEST'))
+"
+```
+
+`status='submitted'`, `filled_qty=0`, `avg_fill_price=None` 이어야 한다.
+
+#### 5. 취소한다
+
+```bash
+cd ~/stock-portal && .venv/bin/python -m common.broker.probe kt10003 /api/dostk/ordr '{"dmst_stex_tp":"KRX","orig_ord_no":"<2번의 주문번호>","stk_cd":"005930","cncl_qty":"0"}'
+```
+
+`cncl_qty` 가 `"0"` 이면 잔량 전부 취소다. 응답의 **`ord_no`(새 번호)와
+`base_orig_ord_no`(원 번호)를 둘 다 적어둔다** — 어느 쪽을 `OrderResult`
+에 담을지가 `cancel_order` 구현의 미확정 항목이다.
+
+#### 6. 취소 뒤 어디에 남는지 본다 (이게 핵심이다)
+
+3번과 같은 `ka10075`, 그리고 체결 목록도 본다.
+
+```bash
+cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/acnt '{"qry_tp":"0","sell_tp":"0","stex_tp":"1"}'
+```
+
+**취소된 주문이 어느 목록에도 없으면** 지금 `get_order_status` 는
+`PermanentError` 를 던진다. 재시작 복구(`INTERFACES.md` 2.2)가 미체결
+주문을 대조할 때 문제가 되므로, 없다면 처리를 다시 정해야 한다.
+
+4번을 한 번 더 돌려 실제 동작을 확인한다.
+
+#### 마치고 나서
+
+- 15:30 전에 취소까지 끝낸다
+- **체결되면** (하한가까지 폭락) 그것도 실측이다. 1주 매수 체결가와
+  수수료를 기록하고 넘어간다. 모의투자라 되돌릴 필요가 없다
+- 응답을 그대로 붙여주면 파서를 고치고 테스트에 샘플로 고정한 뒤
+  `cancel_order` 를 구현한다. 그러면 1단계가 닫힌다
 
 ### 주문 조회·취소 API 조사 (2026-08-31)
 
