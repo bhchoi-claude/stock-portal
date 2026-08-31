@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.db.commands import ack, complete, pending_commands
+from common.db.filters import add_filter, blocked_stock_ids, list_filters, remove_filter
 from common.db.pnl import snapshot
 from common.db.positions import list_positions, sync_positions
 from common.db.signals import consume, pending_signals, record_signal
@@ -276,3 +277,61 @@ def test_같은_날_다시_찍으면_덮어쓴다(cur, account):
         (account, day),
     )
     assert cur.fetchone() == (1, Decimal(200))
+
+
+# --- stock_filter ------------------------------------------------------------
+
+
+def test_제외_목록에_있는_종목을_돌려준다(cur, stocks):
+    add_filter(cur, stock_id=stocks[0], strategy="swing", filter_type="block")
+
+    assert stocks[0] in blocked_stock_ids(cur, "swing", date(2026, 9, 1))
+
+
+def test_all_전략_제외는_모든_전략에_걸린다(cur, stocks):
+    add_filter(cur, stock_id=stocks[0], strategy="all", filter_type="block")
+
+    assert stocks[0] in blocked_stock_ids(cur, "swing", date(2026, 9, 1))
+    assert stocks[0] in blocked_stock_ids(cur, "daytrade", date(2026, 9, 1))
+
+
+def test_다른_전략의_제외는_안_걸린다(cur, stocks):
+    add_filter(cur, stock_id=stocks[0], strategy="daytrade", filter_type="block")
+
+    assert stocks[0] not in blocked_stock_ids(cur, "swing", date(2026, 9, 1))
+
+
+def test_기한이_지난_제외는_안_걸린다(cur, stocks):
+    add_filter(
+        cur,
+        stock_id=stocks[0],
+        strategy="swing",
+        filter_type="block",
+        until_date=date(2026, 8, 31),
+    )
+
+    assert stocks[0] in blocked_stock_ids(cur, "swing", date(2026, 8, 31))
+    assert stocks[0] not in blocked_stock_ids(cur, "swing", date(2026, 9, 1))
+
+
+def test_allow_는_진입_차단에_안_섞인다(cur, stocks):
+    """화이트리스트 모드는 아직 없다. block 만 본다."""
+    add_filter(cur, stock_id=stocks[0], strategy="swing", filter_type="allow")
+
+    assert stocks[0] not in blocked_stock_ids(cur, "swing", date(2026, 9, 1))
+
+
+def test_목록을_넣고_지운다(cur, stocks):
+    filter_id = add_filter(
+        cur,
+        stock_id=stocks[0],
+        strategy="swing",
+        filter_type="block",
+        reason="악재",
+    )
+
+    [row] = [f for f in list_filters(cur) if f.filter_id == filter_id]
+    assert (row.stock_id, row.filter_type, row.reason) == (stocks[0], "block", "악재")
+
+    assert remove_filter(cur, filter_id) is True
+    assert remove_filter(cur, filter_id) is False

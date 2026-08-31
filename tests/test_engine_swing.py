@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from common.broker.mock import MockBroker
+from common.db.filters import add_filter
 from common.db.orders import list_open_orders
 from common.db.signals import pending_signals, record_signal
 from common.risk import RiskManager
@@ -520,3 +521,48 @@ def test_스냅샷을_남긴다(engine_conn, paper):
         )
         assert cur.fetchone()[0] == Decimal(10000000)
     engine_conn.rollback()
+
+
+def test_제외_목록의_종목은_계획에_안_들어간다(engine_conn, paper, stocks):
+    """필터는 운영 판단이라 엔진이 본다. 전략은 필터를 모른다."""
+    with engine_conn.cursor() as cur:
+        add_filter(
+            cur,
+            stock_id=stocks[0],
+            strategy=STRATEGY,
+            filter_type="block",
+            reason="악재",
+        )
+    engine_conn.commit()
+
+    strategy = StubStrategy(
+        entries=[
+            EntryIntent(stocks[0], Side.BUY, Decimal(3)),
+            EntryIntent(stocks[1], Side.BUY, Decimal(2)),
+        ]
+    )
+    engine = build(conn=engine_conn, strategy=strategy)
+
+    assert engine._plan_entries(context(engine, [], balance()), Regime.NEUTRAL) == 1
+
+    with engine_conn.cursor() as cur:
+        rows = pending_signals(
+            cur, STRATEGY, datetime.now(SEOUL) - timedelta(minutes=5)
+        )
+    engine_conn.rollback()
+    assert [s.stock_id for s in rows] == [stocks[1]]
+
+
+def test_제외_목록은_청산을_막지_않는다(engine_conn, paper, stocks):
+    """들고 있는 종목을 제외 목록에 넣었다고 팔지 못하면 갇힌다."""
+    with engine_conn.cursor() as cur:
+        add_filter(cur, stock_id=stocks[0], strategy=STRATEGY, filter_type="block")
+    engine_conn.commit()
+
+    position = Position(ACCOUNT, stocks[0], 10, Decimal(1000))
+    strategy = StubStrategy(exits={stocks[0]: ExitIntent(stocks[0], 10, "stop")})
+    engine = build(conn=engine_conn, strategy=strategy)
+
+    assert (
+        engine._plan_exits(context(engine, [position], balance()), Regime.NEUTRAL) == 1
+    )

@@ -13,9 +13,12 @@ Type=simple
 User=bh-server
 WorkingDirectory=/home/bh-server/stock-portal
 
-# 24시간 상주한다. 끊기면 다시 붙되, 재시작마다 재시작 복구가 증권사와
-# 대조하므로 (INTERFACES.md 2.2) 몰아치지 않도록 여유를 둔다
-Restart=always
+# always 가 아니라 on-failure 다. 포털의 정지 명령을 받으면 엔진은 0 으로
+# 끝나는데, always 면 systemd 가 30초 뒤 되살려 정지가 무의미해진다.
+# 크래시(0 이 아닌 종료)만 되살린다.
+#
+# 재시작마다 증권사와 대조하므로 (INTERFACES.md 2.2) 몰아치지 않게 여유를 둔다
+Restart=on-failure
 RestartSec=30
 
 ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m engines.swing

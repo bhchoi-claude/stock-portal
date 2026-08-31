@@ -15,6 +15,7 @@ from common.broker.errors import BrokerError
 from common.db.commands import Command, ack, complete, pending_commands
 from common.db.conn import transaction
 from common.db.events import log_event
+from common.db.filters import blocked_stock_ids
 from common.db.heartbeat import upsert_heartbeat
 from common.db.orders import OpenOrder, apply_result, list_open_orders
 from common.db.pnl import snapshot
@@ -166,7 +167,13 @@ class SwingEngine:
 
         ctx = self._context()
         regime = self.feed.get_regime()
+        blocked = self._blocked(now.date())
         for signal in signals:
+            if signal.side is Side.BUY and signal.stock_id in blocked:
+                # 어젯밤 계획한 뒤 아침에 막았을 수 있다. 마지막 순간까지 본다
+                log.info("%s 제외 목록에 있어 사지 않습니다", signal.stock_id)
+                self._consume(signal.signal_id)
+                continue
             self._submit_one(signal, ctx, regime)
 
     def _cancel(self, now: datetime) -> None:
@@ -286,7 +293,11 @@ class SwingEngine:
         판단해야 갭상승이 반영된다.
         """
         count = 0
+        blocked = self._blocked(self.now().date())
         for intent in self.strategy.scan(ctx):
+            if intent.stock_id in blocked:
+                log.info("%s 제외 목록에 있어 계획에서 뺍니다", intent.stock_id)
+                continue
             with transaction(self.conn) as cur:
                 record_signal(
                     cur,
@@ -607,6 +618,20 @@ class SwingEngine:
             spanned = traded_range(cur)
         self.conn.rollback()
         return spanned is not None and spanned[1] == day
+
+    def _blocked(self, day: date) -> set[str]:
+        """오늘 사면 안 되는 종목 (`stock_filter`).
+
+        **진입에만 쓴다.** 청산은 보지 않는다 — 들고 있는 종목을 제외
+        목록에 넣었다고 팔지 못하면 갇힌다.
+
+        전략이 아니라 엔진이 본다. 필터는 운영 판단이라 전략이 알 필요가
+        없다 (`INTERFACES.md` 4.2 와 같은 결).
+        """
+        with self.conn.cursor() as cur:
+            blocked = blocked_stock_ids(cur, self.strategy.name, day)
+        self.conn.rollback()
+        return blocked
 
     def _open_orders(self) -> list[OpenOrder]:
         with self.conn.cursor() as cur:
