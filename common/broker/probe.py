@@ -33,7 +33,9 @@ def main(argv: list[str] | None = None) -> int:
     # **기본이 모의투자다.** 실전은 명시적으로 골라야 한다
     broker = KiwoomBroker(is_paper=not args.live)
     try:
-        data = broker._call(args.api_id, args.path, body)
+        # **재시도하지 않는 경로를 쓴다.** 이 도구로 주문 응답 샘플도 뜬다.
+        # `_call` 을 부르면 응답을 못 받았을 때 시험주문이 두 번 나간다
+        data = broker._call_once(args.api_id, args.path, body)
     except BrokerError as exc:
         # 거부 사유도 정보다. 어떤 파라미터가 빠졌는지 키움이 알려준다
         print(f"{type(exc).__name__}: {exc}")

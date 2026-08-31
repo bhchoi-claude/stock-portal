@@ -1,6 +1,8 @@
 # 키움 응답 파싱을 실제 응답 샘플로 고정해 확인한다
 
 import json
+import threading
+import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
@@ -267,3 +269,47 @@ def test_보유종목_목록을_읽는다(monkeypatch):
     assert len(positions) == 1
     assert positions[0].account_id == "paper"
     assert positions[0].currency == "KRW"
+
+
+# ---- 주문용 단발 호출 경로 ----
+
+
+def _counting_broker(monkeypatch) -> tuple[KiwoomBroker, list]:
+    """네트워크 없이 호출 횟수만 센다. TransientError 를 계속 던진다."""
+    broker = KiwoomBroker.__new__(KiwoomBroker)
+    broker._min_interval = 0.0
+    broker._max_attempts = 3
+    broker._last_call = {}
+    broker._lock = threading.Lock()
+    calls = []
+
+    def fake_request(path, headers, body):
+        calls.append(path)
+        raise TransientError("타임아웃")
+
+    monkeypatch.setattr(broker, "_auth_header", dict)
+    monkeypatch.setattr(broker, "_request", fake_request)
+    monkeypatch.setattr(time, "sleep", lambda _: None)
+    return broker, calls
+
+
+def test_조회는_transient_를_재시도한다(monkeypatch):
+    broker, calls = _counting_broker(monkeypatch)
+
+    with pytest.raises(TransientError):
+        broker._call("kt00001", "/api/dostk/acnt", {})
+
+    assert len(calls) == 3
+
+
+def test_주문_경로는_재시도하지_않는다(monkeypatch):
+    """응답을 못 받았을 때 다시 걸면 그대로 중복 주문이다 (CLAUDE.md 3).
+
+    접수 여부는 `get_order_status` 로 확인한다.
+    """
+    broker, calls = _counting_broker(monkeypatch)
+
+    with pytest.raises(TransientError):
+        broker._call_once("kt10000", "/api/dostk/ordr", {})
+
+    assert len(calls) == 1

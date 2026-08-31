@@ -204,6 +204,23 @@ class KiwoomBroker(Broker):
             return TransientError(f"키움 서버 오류 (HTTP {exc.code}).")
         return PermanentError(f"키움 호출 거부 (HTTP {exc.code}).")
 
+    def _call_once(
+        self, api_id: str, path: str, body: dict[str, Any], **extra: str
+    ) -> dict[str, Any]:
+        """호출 한 번. **재시도하지 않는다.**
+
+        주문이 이 경로를 쓴다. 응답을 못 받았을 때 다시 걸면 그대로 중복
+        주문이 된다. 접수 여부는 `get_order_status` 로 확인한다
+        (INTERFACES.md 2.1).
+        """
+        self._throttle(api_id)
+        headers = {**self._auth_header(), "api-id": api_id, **extra}
+        try:
+            return self._request(path, headers, body)
+        finally:
+            # 다음 호출은 이 호출이 끝난 시각부터 간격을 잰다
+            self._last_call[api_id] = time.monotonic()
+
     def _call(
         self, api_id: str, path: str, body: dict[str, Any], **extra: str
     ) -> dict[str, Any]:
@@ -213,10 +230,8 @@ class KiwoomBroker(Broker):
         (INTERFACES.md 2.1).
         """
         for attempt in range(1, self._max_attempts + 1):
-            self._throttle(api_id)
-            headers = {**self._auth_header(), "api-id": api_id, **extra}
             try:
-                return self._request(path, headers, body)
+                return self._call_once(api_id, path, body, **extra)
             except TransientError as exc:
                 if attempt == self._max_attempts:
                     raise
@@ -230,9 +245,6 @@ class KiwoomBroker(Broker):
                     delay,
                 )
                 time.sleep(delay)
-            finally:
-                # 다음 호출은 이 호출이 끝난 시각부터 간격을 잰다
-                self._last_call[api_id] = time.monotonic()
         raise AssertionError("도달할 수 없다")
 
     # ---- 조회 ----
