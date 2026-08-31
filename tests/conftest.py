@@ -61,3 +61,21 @@ def db_conn():
             )
         conn.commit()
         conn.close()
+
+
+@pytest.fixture
+def read_conn():
+    """읽기 전용 커넥션. `LiveFeed` 가 autocommit 으로 바꿔 쓴다.
+
+    롤백 픽스처(`cur`)의 커넥션을 넘기면 격리가 깨지므로 따로 연다.
+    """
+    try:
+        url = load_database_url()
+    except RuntimeError:
+        pytest.skip("DATABASE_URL 이 없어 DB 통합 테스트를 건너뜁니다")
+
+    conn = psycopg.connect(url)
+    try:
+        yield conn
+    finally:
+        conn.close()
