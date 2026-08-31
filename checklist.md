@@ -161,13 +161,45 @@ API 가이드가 SPA 라 본문이 안 열리고 모의투자 지원/미지원 �
 - **수량은 19:00 종가로 계산하는데 체결은 다음 날 시가다.** 갭상승하면 현금이
   모자란다. 백테스트 `_buy` 의 감량 처리와 같은 것이 실전에도 필요하다
 
-### 아직 안 정한 것
+### 4단계 시작 전 결정 (2026-08-31 확인 사항)
 
-- [ ] `command` 폴링 주기 — `telegram` 이 60초다. 맞출지
-- [ ] 계좌 자산을 브로커 잔고 그대로 쓸지, `accounts.yaml` 의 `allocation`
-      으로 상한을 둘지. 지금 `allocation` 을 읽는 코드가 없다
-- [ ] 장 마감 후 미체결 취소와 19:00 판단 사이에 할 일이 있는지
-      (`daily_pnl` 스냅샷 시각)
+다섯을 정했다. 근거는 `context-notes.md` 2026-08-31 (8) 에 있다.
+
+- [x] **`command` 폴링 10초, `heartbeat` 60초.** 루프 틱이 10초고 6틱마다
+      신호를 찍는다. `command` 는 DB 폴링이라 키움 API 유량(초당 1건)과
+      무관하다. 전량청산을 눌러놓고 60초를 기다리는 것이 장중에 길다
+- [x] **`allocation` 0 이면 무제한, 양수면 상한.** `min(브로커 총자산,
+      allocation)` 을 `RiskManager` 에 넘긴다. 지금 설정(전부 0)을 안 바꿔도
+      모의투자가 그대로 돌고, Phase 9 실전 소액 운용 장치가 한 줄로 생긴다
+- [x] **`daily_pnl` 스냅샷은 15:40.** 장 마감 동시호가(15:20~15:30) 체결이
+      브로커 잔고에 반영될 여유를 둔다. `price_daily` 적재와 무관하다 —
+      예수금·평가금액을 브로커에서 받기 때문이다
+- [x] **주문 계획은 `signal` 테이블에 남긴다.** 19:00 은 `scan`·`manage`
+      결과를 signal 행으로만 남기고, 08:30 에 `consumed_at IS NULL` 을 읽어
+      **그 시점 잔고로 `RiskManager` 를 돌려 수량을 뽑는다.** 제출 뒤
+      `consumed_at` 을 찍는다
+- [x] **position 대조가 어긋나면 진입만 막고 청산은 계속한다.**
+      브로커 값으로 덮어쓰고(`SCHEMA.md` — 증권사가 정본) `event_log` 와
+      알림을 남긴다
+
+#### 왜 계획을 메모리에 두지 않았나
+
+백테스트는 `self.pending` 리스트로 하루를 넘긴다. 실전은 19:00 과 08:30
+사이가 13시간이고 **배포가 15:40 이후라 그 사이 재시작이 흔하다.**
+메모리에 두면 그때마다 다음 날 주문이 통째로 사라진다.
+
+`signal` 테이블이 이 용도로 설계돼 있다 — `consumed_at`,
+`order_request.signal_id`, `idx_signal_pending` 부분 인덱스. 스키마를
+바꾸지 않는다.
+
+#### 왜 수량을 signal 에 담지 않나
+
+`payload` 는 "전략별 근거" 다 (`SCHEMA.md` 5장). 운영 값을 넣으면 규정이
+넓어진다.
+
+담지 않아도 된다. **`RiskManager._budget` 이 이미 `ctx.balance.available`
+로 상한을 잡는다.** 08:30 에 다시 돌리면 그 시점 주문가능금액이 자동으로
+반영되어, 백테스트 `_buy` 의 갭상승 감량과 같은 일이 일어난다.
 
 ## 절대 규칙 — 이 단계에서 가장 위험하다
 
@@ -503,6 +535,13 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
 
 ## 4단계 — engine-swing 프로세스
 
+- [ ] `config/engine.yaml` — 시각표·주기를 설정으로 뺀다 (CLAUDE.md 1)
+- [ ] `common/db/signals.py` — 계획 적재 / 미소비 조회 / `consume`
+- [ ] `common/db/commands.py` — 폴링 / `ack` / 완료
+- [ ] `common/db/positions.py` — 브로커 잔고 대조와 업서트
+- [ ] `common/db/pnl.py` — `daily_pnl` 스냅샷
+- [ ] `engines/swing/schedule.py` — 시각표 판정. **순수 함수로 뺀다.**
+      상주 루프 안에 시각 분기를 묻으면 테스트할 수가 없다
 - [ ] **19:00 판단 전에 `price_daily` 에 그날 일봉이 있는지 본다.**
       없으면 그날 판단을 건너뛴다. `LiveFeed.get_universe()` 는 빈 목록을
       줄 뿐이라 '후보 없음' 과 구분되지 않는다
@@ -510,8 +549,8 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
 - [ ] `command` 폴링 — 정지, 진입차단, 청산
 - [ ] `heartbeat` 기록
 - [ ] 재시작 복구 — **미체결 주문 대조**
-- [ ] `position` 대조 — 브로커 잔고와 DB 가 어긋나면 멈춘다
-- [ ] `daily_pnl` 스냅샷
+- [ ] `position` 대조 — 어긋나면 브로커 값으로 덮어쓰고 **진입만 막는다**
+- [ ] `daily_pnl` 스냅샷 (15:40)
 - [ ] systemd 유닛 (`deploy/`)
 
 ## 5단계 — 포털 화면
