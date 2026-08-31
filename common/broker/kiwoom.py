@@ -67,6 +67,15 @@ TIMEOUT = 20.0
 TOKEN_MARGIN_SEC = 600
 
 
+def strip_code_prefix(code: str) -> str:
+    """잔고 응답의 종목코드는 `A005930` 처럼 앞에 글자가 붙는다 (2026-08-30 실측).
+
+    시세 API 는 `005930` 을 그대로 주는데 `kt00018` 만 접두어를 붙인다.
+    벗기지 않으면 `KRX:A005930` 이 되어 DB 의 어느 종목과도 안 맞는다.
+    """
+    return code[1:] if code[:1].isalpha() else code
+
+
 def to_amount(value: str | None) -> Decimal:
     """키움 금액은 15자리 제로패딩 문자열이다 (2026-08-30 실측).
 
@@ -408,13 +417,35 @@ class KiwoomBroker(Broker):
     def get_positions(self, account_id: str) -> list[Position]:
         """`kt00018` 의 `acnt_evlt_remn_indv_tot` 가 보유종목 배열이다.
 
-        **배열 안의 필드 이름을 아직 확정하지 못했다.** 모의투자 계좌에
-        보유종목이 없어 빈 배열만 봤다 (2026-08-30). 한 종목이라도 담긴 뒤에
-        실측해 채운다. 문서만 보고 필드를 정하면 조용히 틀린 값을 읽는다.
+        `get_balance` 와 같은 API 를 부른다. 합치지 않은 것은 규격이 둘로
+        나뉘어 있어서다 (`INTERFACES.md` 2.2). 주기가 하루 한 번이라 괜찮다.
         """
-        raise NotImplementedError(
-            "보유종목 배열의 필드를 아직 실측하지 못했다."
-            " 모의투자 계좌에 종목을 담고 probe 로 확인한 뒤 구현한다."
+        data = self._call(
+            BALANCE_API, ACCOUNT_PATH, {"qry_tp": "1", "dmst_stex_tp": "KRX"}
+        )
+        rows = data.get("acnt_evlt_remn_indv_tot") or []
+        return [
+            self._to_position(account_id, row)
+            for row in rows
+            # 수량 0 인 행은 포지션이 아니다. 나눗셈도 막는다
+            if to_amount(row.get("rmnd_qty")) > 0
+        ]
+
+    @staticmethod
+    def _to_position(account_id: str, row: dict[str, str]) -> Position:
+        """**평단가에 매입수수료를 포함한다.**
+
+        백테스트 `Portfolio` 가 같은 정의를 쓴다 — 현금이 준 만큼이 원가다.
+        맞추지 않으면 같은 전략이 백테스트와 실전에서 다른 손절가를 본다.
+        """
+        quantity = int(to_amount(row["rmnd_qty"]))
+        cost = to_amount(row["pur_amt"]) + to_amount(row["pur_cmsn"])
+
+        return Position(
+            account_id=account_id,
+            stock_id=make_stock_id("KRX", strip_code_prefix(row["stk_cd"])),
+            quantity=quantity,
+            avg_price=cost / quantity,
         )
 
     # ---- 주문 (Phase 8) ----

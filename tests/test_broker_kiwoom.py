@@ -7,7 +7,13 @@ from decimal import Decimal
 import pytest
 
 from common.broker.errors import PermanentError, RateLimitError, TransientError
-from common.broker.kiwoom import KiwoomBroker, strip_sign, to_amount, to_utc
+from common.broker.kiwoom import (
+    KiwoomBroker,
+    strip_code_prefix,
+    strip_sign,
+    to_amount,
+    to_utc,
+)
 
 # 2026-08-28 모의투자 계좌 ka10080 응답에서 그대로 옮긴 행이다
 MINUTE_ROW = {
@@ -128,6 +134,27 @@ BALANCE_RESPONSE = {
     "return_msg": "모의투자 해당조회내역이 없습니다.",
 }
 
+# 2026-08-31 모의투자 계좌 kt00018 의 보유종목 행. 그대로 옮겼다
+HOLDING_ROW = {
+    "stk_cd": "A005930",
+    "stk_nm": "삼성전자",
+    "evltv_prft": "000000000007450",
+    "prft_rt": "000000002.98",
+    "pur_pric": "000000000250250",
+    "pred_close_pric": "000000257000",
+    "rmnd_qty": "000000000000001",
+    "trde_able_qty": "000000000000001",
+    "cur_prc": "000000260000",
+    "pur_amt": "000000000250250",
+    "pur_cmsn": "000000000000870",
+    "evlt_amt": "000000000260000",
+    "sell_cmsn": "000000000000910",
+    "tax": "000000000000520",
+    "sum_cmsn": "000000000001780",
+    "poss_rt": "000000089.36",
+    "crd_tp": "00",
+}
+
 
 def test_금액은_제로패딩_문자열이다():
     """000000010000000 이 1,000만원이다 (2026-08-30 실측)."""
@@ -169,14 +196,6 @@ def test_잔고_조회에_계좌번호를_보내지_않는다(monkeypatch):
     assert sent[1][0] == "kt00018"
 
 
-def test_보유종목은_아직_구현하지_않았다():
-    """배열 필드를 실측하지 못했다. 추측으로 파서를 쓰지 않는다."""
-    broker = KiwoomBroker.__new__(KiwoomBroker)
-
-    with pytest.raises(NotImplementedError, match="실측"):
-        broker.get_positions("paper")
-
-
 def _stub_broker(monkeypatch, sent: list | None = None) -> KiwoomBroker:
     """네트워크 없이 응답만 갈아끼운다."""
     broker = KiwoomBroker.__new__(KiwoomBroker)
@@ -189,3 +208,62 @@ def _stub_broker(monkeypatch, sent: list | None = None) -> KiwoomBroker:
 
     monkeypatch.setattr(broker, "_call", fake_call)
     return broker
+
+
+def test_잔고_종목코드의_접두어를_벗긴다():
+    """kt00018 만 A005930 처럼 접두어를 붙인다 (2026-08-31 실측).
+
+    벗기지 않으면 KRX:A005930 이 되어 DB 의 어느 종목과도 안 맞는다.
+    """
+    assert strip_code_prefix("A005930") == "005930"
+    assert strip_code_prefix("005930") == "005930"
+
+
+def test_보유종목_한_행_매핑():
+    position = KiwoomBroker._to_position("paper", HOLDING_ROW)
+
+    assert position.stock_id == "KRX:005930"
+    assert position.quantity == 1
+
+
+def test_평단가에_매입수수료를_포함한다():
+    """백테스트 Portfolio 와 같은 정의다. 현금이 준 만큼이 원가다.
+
+    맞추지 않으면 같은 전략이 백테스트와 실전에서 다른 손절가를 본다.
+    """
+    position = KiwoomBroker._to_position("paper", HOLDING_ROW)
+
+    # 매입금액 250,250 + 매입수수료 870
+    assert position.avg_price == Decimal(251_120)
+    assert position.avg_price > to_amount(HOLDING_ROW["pur_pric"])
+
+
+def test_수량이_0_인_행은_포지션이_아니다(monkeypatch):
+    empty = {**HOLDING_ROW, "rmnd_qty": "000000000000000"}
+    broker = _stub_broker(monkeypatch)
+    monkeypatch.setattr(
+        broker,
+        "_call",
+        lambda *a, **k: {**BALANCE_RESPONSE, "acnt_evlt_remn_indv_tot": [empty]},
+    )
+
+    assert broker.get_positions("paper") == []
+
+
+def test_보유종목이_없으면_빈_목록이다(monkeypatch):
+    broker = _stub_broker(monkeypatch)
+    assert broker.get_positions("paper") == []
+
+
+def test_보유종목_목록을_읽는다(monkeypatch):
+    broker = _stub_broker(monkeypatch)
+    monkeypatch.setattr(
+        broker,
+        "_call",
+        lambda *a, **k: {**BALANCE_RESPONSE, "acnt_evlt_remn_indv_tot": [HOLDING_ROW]},
+    )
+    positions = broker.get_positions("paper")
+
+    assert len(positions) == 1
+    assert positions[0].account_id == "paper"
+    assert positions[0].currency == "KRW"
