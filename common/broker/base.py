@@ -69,11 +69,21 @@ class Broker(ABC):
     def submit_order(self, req: OrderRequest) -> OrderResult: ...
 
     @abstractmethod
-    def cancel_order(self, account_id: str, broker_order_no: str) -> OrderResult: ...
+    def cancel_order(
+        self,
+        account_id: str,
+        broker_order_no: str,
+        client_order_id: str,
+        stock_id: str,
+    ) -> OrderResult:
+        """`client_order_id` 는 증권사가 모른다. 호출부가 넘겨 에코한다.
+
+        `stock_id` 는 키움 취소 API 가 필수로 요구한다 (INTERFACES.md 2장).
+        """
 
     @abstractmethod
     def get_order_status(
-        self, account_id: str, broker_order_no: str
+        self, account_id: str, broker_order_no: str, client_order_id: str
     ) -> OrderResult: ...
 
     # ---- 실시간 ----

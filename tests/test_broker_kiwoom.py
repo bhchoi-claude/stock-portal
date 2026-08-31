@@ -461,3 +461,139 @@ def test_주문번호가_없으면_조용히_넘어가지_않는다(caplog):
         assert KiwoomBroker._order_no({"return_code": 0}) is None
 
     assert "주문번호" in caplog.text
+
+
+# ---- 주문 상태 조회 ----
+
+# 2026-08-31 모의투자 ka10076 응답에서 그대로 옮긴 행이다.
+# 지정가 250,500 주문이 250,250 에 체결됐다
+FILLED_ROW = {
+    "ord_no": "0060327",
+    "stk_nm": "삼성전자",
+    "io_tp_nm": "+매수",
+    "ord_pric": "250500",
+    "ord_qty": "1",
+    "cntr_pric": "250250",
+    "cntr_qty": "1",
+    "oso_qty": "0",
+    "tdy_trde_cmsn": "870",
+    "tdy_trde_tax": "0",
+    "ord_stt": "체결",
+    "trde_tp": "보통",
+    "orig_ord_no": "0000000",
+    "ord_tm": "101414",
+    "stk_cd": "005930",
+    "stex_tp": "1",
+    "stex_tp_txt": "KRX",
+    "sor_yn": "N",
+    "stop_pric": "0",
+}
+
+# 2026-08-31 모의투자 ka10075 응답. 미체결이 없는 상태다
+NO_UNFILLED = {"oso": [], "return_code": 0, "return_msg": " 조회가 완료되었습니다."}
+
+
+def _status_broker(monkeypatch, responses: dict, sent: list) -> KiwoomBroker:
+    broker = KiwoomBroker.__new__(KiwoomBroker)
+
+    def fake_call(api_id, path, body, **extra):
+        sent.append((api_id, body))
+        return responses[api_id]
+
+    monkeypatch.setattr(broker, "_call", fake_call)
+    return broker
+
+
+def test_체결된_주문을_체결_목록에서_찾는다(monkeypatch):
+    sent = []
+    broker = _status_broker(
+        monkeypatch,
+        {"ka10075": NO_UNFILLED, "ka10076": {"cntr": [FILLED_ROW]}},
+        sent,
+    )
+
+    result = broker.get_order_status("paper", "0060327", "01JABC")
+
+    assert result.status == "filled"
+    assert result.filled_qty == 1
+    assert result.avg_fill_price == Decimal(250250)
+    assert result.broker_order_no == "0060327"
+    assert result.client_order_id == "01JABC"
+
+
+def test_미체결을_먼저_보고_없으면_체결을_본다(monkeypatch):
+    sent = []
+    broker = _status_broker(
+        monkeypatch,
+        {"ka10075": NO_UNFILLED, "ka10076": {"cntr": [FILLED_ROW]}},
+        sent,
+    )
+
+    broker.get_order_status("paper", "0060327", "01JABC")
+
+    assert [api_id for api_id, _ in sent] == ["ka10075", "ka10076"]
+
+
+def test_미체결에서_찾으면_체결을_부르지_않는다(monkeypatch):
+    """호출을 아끼려는 게 아니라, 미체결이 더 최신 상태이기 때문이다."""
+    sent = []
+    open_row = {**FILLED_ROW, "cntr_qty": "0", "oso_qty": "1"}
+    broker = _status_broker(monkeypatch, {"ka10075": {"oso": [open_row]}}, sent)
+
+    result = broker.get_order_status("paper", "0060327", "01JABC")
+
+    assert [api_id for api_id, _ in sent] == ["ka10075"]
+    assert result.status == "submitted"
+    assert result.filled_qty == 0
+    assert result.avg_fill_price is None
+
+
+def test_부분체결을_수량으로_판정한다(monkeypatch):
+    """ord_stt 문자열이 아니라 수량으로 정한다. 어휘를 다 모른다."""
+    sent = []
+    partial = {**FILLED_ROW, "ord_qty": "10", "cntr_qty": "4", "oso_qty": "6"}
+    broker = _status_broker(monkeypatch, {"ka10075": {"oso": [partial]}}, sent)
+
+    result = broker.get_order_status("paper", "0060327", "01JABC")
+
+    assert result.status == "partial"
+    assert result.filled_qty == 4
+
+
+def test_주문번호가_다르면_찾지_않는다(monkeypatch):
+    sent = []
+    broker = _status_broker(
+        monkeypatch,
+        {"ka10075": NO_UNFILLED, "ka10076": {"cntr": [FILLED_ROW]}},
+        sent,
+    )
+
+    with pytest.raises(PermanentError):
+        broker.get_order_status("paper", "9999999", "01JABC")
+
+
+def test_조회에_KRX_거래소구분을_보낸다(monkeypatch):
+    """ka10075·ka10076 은 KRX 가 문자열 "1" 이다. kt00018 의 "KRX" 와 다르다."""
+    sent = []
+    broker = _status_broker(
+        monkeypatch,
+        {"ka10075": NO_UNFILLED, "ka10076": {"cntr": [FILLED_ROW]}},
+        sent,
+    )
+
+    broker.get_order_status("paper", "0060327", "01JABC")
+
+    assert all(body["stex_tp"] == "1" for _, body in sent)
+
+
+def test_한_주문이_여러_행이면_조용히_넘어가지_않는다(monkeypatch, caplog):
+    """부분체결에서 나올 수 있다. 그러면 수량 계산이 틀린다."""
+    sent = []
+    broker = _status_broker(
+        monkeypatch, {"ka10075": {"oso": [FILLED_ROW, FILLED_ROW]}}, sent
+    )
+
+    with caplog.at_level(logging.ERROR):
+        broker.get_order_status("paper", "0060327", "01JABC")
+
+    assert "0060327" in caplog.text

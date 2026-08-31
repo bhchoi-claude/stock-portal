@@ -52,6 +52,11 @@ DEPOSIT_API = "kt00001"
 BALANCE_API = "kt00018"
 
 ORDER_PATH = "/api/dostk/ordr"
+UNFILLED_API = "ka10075"
+FILLED_API = "ka10076"
+
+# 거래소 구분. ka10075·ka10076 은 KRX 가 1 이다 (kt00018 의 "KRX" 와 다르다)
+KRX_STEX_TP = "1"
 BUY_API = "kt10000"
 SELL_API = "kt10001"
 
@@ -555,11 +560,103 @@ class KiwoomBroker(Broker):
             logger.error("주문 응답에 주문번호가 없다. 응답 키: %s", sorted(data))
         return order_no
 
-    def cancel_order(self, account_id: str, broker_order_no: str) -> OrderResult:
-        raise NotImplementedError("주문은 Phase 8 이다.")
+    def cancel_order(
+        self,
+        account_id: str,
+        broker_order_no: str,
+        client_order_id: str,
+        stock_id: str,
+    ) -> OrderResult:
+        raise NotImplementedError("취소는 응답 실측 뒤에 만든다.")
 
-    def get_order_status(self, account_id: str, broker_order_no: str) -> OrderResult:
-        raise NotImplementedError("주문은 Phase 8 이다.")
+    def get_order_status(
+        self, account_id: str, broker_order_no: str, client_order_id: str
+    ) -> OrderResult:
+        """미체결(`ka10075`)을 먼저 보고, 없으면 체결(`ka10076`)을 본다.
+
+        **주문번호로 직접 조회하는 API 가 없다** (2026-08-31 조사). 후보
+        넷을 다 봤지만 전부 목록을 받아 우리 주문번호를 찾아야 한다.
+        `ka10076` 의 `ord_no` 파라미터는 조회 키가 아니라 "그보다 과거" 를
+        뜻하는 페이징 필터다.
+
+        `ka10076` 을 고른 것은 **수수료·세금을 주는 유일한 응답**이기
+        때문이다. `execution` 테이블이 둘을 반드시 기록하라고 한다
+        (`SCHEMA.md`). `kt00007`·`kt00009` 에는 없다.
+
+        **조회는 장 외 시간에도 된다** (2026-08-31 실측). 주문과 달리
+        장종료로 막히지 않는다.
+
+        `client_order_id` 는 키움이 모른다. 호출부가 넘긴 값을 그대로 담는다.
+        """
+        row = self._find_order(
+            UNFILLED_API,
+            {"all_stk_tp": "0", "trde_tp": "0", "stex_tp": KRX_STEX_TP},
+            "oso",
+            broker_order_no,
+        )
+        if row is None:
+            row = self._find_order(
+                FILLED_API,
+                {"qry_tp": "0", "sell_tp": "0", "stex_tp": KRX_STEX_TP},
+                "cntr",
+                broker_order_no,
+            )
+        if row is None:
+            # 취소된 주문이 어느 목록에도 없을 수 있다. 아직 실측 못 했다
+            raise PermanentError("모르는 주문번호입니다: " + broker_order_no)
+
+        return self._to_order_result(client_order_id, broker_order_no, row)
+
+    def _find_order(
+        self, api_id: str, body: dict[str, Any], key: str, broker_order_no: str
+    ) -> dict[str, str] | None:
+        """목록에서 주문번호가 같은 행을 찾는다.
+
+        주문번호는 7자리 제로패딩이라 (`"0060503"`) 문자열로 그대로 맞춘다.
+        """
+        rows = self._call(api_id, ACCOUNT_PATH, body).get(key) or []
+        matched = [row for row in rows if row.get("ord_no") == broker_order_no]
+        if len(matched) > 1:
+            # 한 주문이 여러 행으로 오는 경우를 아직 못 봤다. 부분체결에서
+            # 나올 수 있고, 그러면 아래 계산이 틀린다
+            logger.error(
+                "%s 에 주문번호 %s 가 %d 행이다", api_id, broker_order_no, len(matched)
+            )
+        return matched[0] if matched else None
+
+    @staticmethod
+    def _to_order_result(
+        client_order_id: str, broker_order_no: str, row: dict[str, str]
+    ) -> OrderResult:
+        """상태를 수량에서 끌어낸다. **`ord_stt` 문자열을 믿지 않는다.**
+
+        `ord_stt` 는 `"체결"` 같은 한글이고 접수·확인·취소가 무엇으로
+        오는지 아직 모른다 (2026-08-31 실측은 `"체결"` 하나뿐이다).
+        어휘를 다 모르는 채로 문자열을 분기하면 조용히 틀린다. 수량은
+        두 API 가 같은 이름으로 준다.
+
+        **금액이 제로패딩이 아니다.** `ka10076` 은 `"1116"` 처럼 그냥 준다
+        (`kt00001` 의 15자리 패딩과 다르다). `to_amount` 가 둘 다 읽는다.
+        """
+        ordered = int(to_amount(row.get("ord_qty")))
+        filled = int(to_amount(row.get("cntr_qty")))
+
+        if filled <= 0:
+            status = "submitted"
+        elif filled < ordered:
+            status = "partial"
+        else:
+            status = "filled"
+
+        return OrderResult(
+            client_order_id=client_order_id,
+            broker_order_no=broker_order_no,
+            status=status,
+            filled_qty=filled,
+            # 체결가는 지정가와 다를 수 있다. 삼성전자 250,500 주문이
+            # 250,250 에 체결됐다 (2026-08-31 실측)
+            avg_fill_price=to_amount(row.get("cntr_pric")) if filled > 0 else None,
+        )
 
     # ---- 실시간 (Phase 8) ----
 

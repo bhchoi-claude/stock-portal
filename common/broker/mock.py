@@ -88,7 +88,13 @@ class MockBroker(Broker):
         self._by_broker_no[broker_order_no] = req.client_order_id
         return result
 
-    def cancel_order(self, account_id: str, broker_order_no: str) -> OrderResult:
+    def cancel_order(
+        self,
+        account_id: str,
+        broker_order_no: str,
+        client_order_id: str = "",
+        stock_id: str = "",
+    ) -> OrderResult:
         result = self.get_order_status(account_id, broker_order_no)
         cancelled = OrderResult(
             client_order_id=result.client_order_id,
@@ -100,7 +106,13 @@ class MockBroker(Broker):
         self._orders[result.client_order_id] = cancelled
         return cancelled
 
-    def get_order_status(self, account_id: str, broker_order_no: str) -> OrderResult:
+    def get_order_status(
+        self, account_id: str, broker_order_no: str, client_order_id: str = ""
+    ) -> OrderResult:
+        """목은 스스로 매핑을 갖고 있어 `client_order_id` 를 쓰지 않는다.
+
+        인자를 받는 것은 규격을 맞추기 위해서다 (INTERFACES.md 2장).
+        """
         client_order_id = self._by_broker_no.get(broker_order_no)
         if client_order_id is None:
             raise PermanentError(f"모르는 주문번호입니다: {broker_order_no}")

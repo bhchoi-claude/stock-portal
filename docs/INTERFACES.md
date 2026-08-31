@@ -139,10 +139,15 @@ class Broker(ABC):
     def submit_order(self, req: "OrderRequest") -> "OrderResult": ...
 
     @abstractmethod
-    def cancel_order(self, account_id: str, broker_order_no: str) -> "OrderResult": ...
+    def cancel_order(
+        self, account_id: str, broker_order_no: str,
+        client_order_id: str, stock_id: str,
+    ) -> "OrderResult": ...
 
     @abstractmethod
-    def get_order_status(self, account_id: str, broker_order_no: str) -> "OrderResult": ...
+    def get_order_status(
+        self, account_id: str, broker_order_no: str, client_order_id: str,
+    ) -> "OrderResult": ...
 
     # ---- 실시간 ----
 
@@ -178,6 +183,16 @@ class OrderResult:
     error_code: str | None
     error_message: str | None
 ```
+
+**두 메서드가 `client_order_id` 를 받는다.** 증권사는 우리 멱등성 키를
+저장하지 않으므로 (보내지도 않는다) 어댑터가 그 값을 알 방법이 없다.
+호출부는 `broker_order_no` 를 `order_request` 에서 찾아왔으므로 같은 행의
+`client_order_id` 를 함께 넘긴다. 이렇게 해야 `OrderResult` 가 완전한
+기록이 된다.
+
+**취소는 `stock_id` 도 받는다.** 키움 `kt10003` 이 종목코드를 필수로
+요구한다 (2026-08-31 실측). 취소 시점에 호출부는 미체결 목록을 이미 갖고
+있어 종목코드를 안다.
 
 ### 2.1 중복 주문 방지 — 반드시 지킨다
 
