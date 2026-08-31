@@ -1,5 +1,5 @@
 [Unit]
-Description=stock-portal 장중 시험주문 (일회용, Phase 8 1단계 마감)
+Description=stock-portal 장중 실측 실험 (일회용, Phase 8)
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -8,8 +8,8 @@ Type=oneshot
 User=bh-server
 WorkingDirectory=/home/bh-server/stock-portal
 
-# 하한가를 읽을 때까지 최대 20분, 주문 재시도까지 합쳐 넉넉히 잡는다
-TimeoutStartSec=3600
+# 08:25 에 시작해 16:12 까지 시각표대로 돈다. 9시간을 준다
+TimeoutStartSec=32400
 
 ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m common.broker.testorder
 
