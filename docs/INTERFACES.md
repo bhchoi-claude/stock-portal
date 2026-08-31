@@ -815,8 +815,7 @@ class TelegramNotifier(Notifier): ...
 
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/control/engine/{name}/stop` | 엔진 정지 |
-| POST | `/api/control/engine/{name}/start` | 엔진 시작 (확인 필요) |
+| POST | `/api/control/engine/{name}/stop` | 엔진 정지 (화면에 버튼 없음) |
 | POST | `/api/control/halt-entry` | 신규 진입 차단 |
 | POST | `/api/control/liquidate-all` | 전량 청산 (2단계 확인) |
 | POST | `/api/positions/{account}/{stock}/close` | 종목별 청산 |
@@ -824,6 +823,18 @@ class TelegramNotifier(Notifier): ...
 | DELETE | `/api/filters/{id}` | 목록 삭제 |
 | POST | `/api/regime/override` | 국면 수동 설정 |
 | POST | `/api/keywords/merge` | 키워드 동의어 병합 |
+
+**`/api/control/engine/{name}/start` 는 없다** (2026-08-31 확인 사항).
+엔진이 죽어 있으면 `command` 를 폴링할 주체가 없고, 포털이 프로세스를 직접
+띄우는 것은 이 규약을 깬다. 되살리는 것은 systemd 의 일이다.
+
+```bash
+sudo systemctl start stock-portal-swing.service
+```
+
+같은 이유로 **정지는 API 만 두고 화면에 버튼을 두지 않는다.** 되살리려면
+ssh 가 필요한 일방통행이라, 휴대폰에서 누를 자리에 둘 것이 아니다.
+매매를 멈추는 것은 `halt-entry` 가 한다 — 새로 사지 않고 청산만 돈다.
 
 ### 10.1 제공하지 않는 것
 
