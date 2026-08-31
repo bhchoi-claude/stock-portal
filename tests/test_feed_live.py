@@ -21,9 +21,9 @@ STOCK = "KRX:005930"
 
 
 class _FakeConn:
-    """쿼리하지 않는 테스트용. LiveFeed 가 autocommit 을 켜는 것만 받아준다."""
+    """쿼리하지 않는 테스트용. LiveFeed 는 autocommit 커넥션만 받는다."""
 
-    autocommit = False
+    autocommit = True
 
 
 def _feed(conn, broker=None, moment=None) -> LiveFeed:
@@ -158,3 +158,17 @@ def test_일봉이_없는_날은_유니버스가_빈다(read_conn):
     ahead = moment.replace(year=moment.year + 1)
 
     assert _feed(read_conn, moment=ahead).get_universe() == []
+
+
+def test_autocommit_이_아니면_거부한다():
+    """상주 프로세스가 트랜잭션을 오래 열어두면 안 된다.
+
+    켜주지 않고 요구한다. 켜면 남의 커넥션 상태를 바꾸는 데다, 이미
+    트랜잭션이 열려 있으면 생성자가 터진다.
+    """
+
+    class _Plain:
+        autocommit = False
+
+    with pytest.raises(RuntimeError):
+        _feed(_Plain())

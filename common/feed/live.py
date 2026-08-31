@@ -32,9 +32,15 @@ class LiveFeed(DataFeed):
     동작이다 — 여기서 예외를 던지면 그것이 곧 갈라짐이다. 일봉이 쌓였는지는
     엔진이 `price_daily` 를 직접 보고 판단한다 (4단계).
 
-    커넥션은 **읽기 전용으로만 쓴다.** 주문을 기록하는 커넥션과 공유하지
-    않는다. 상주 프로세스가 트랜잭션을 오래 열어두지 않도록 autocommit 으로
-    둔다.
+    커넥션은 **autocommit 이어야 하고 읽기 전용으로만 쓴다.** 주문을
+    기록하는 커넥션과 공유하지 않는다.
+
+    24시간 도는 프로세스가 트랜잭션을 오래 열어두면 안 되기 때문이다.
+    조회마다 `rollback()` 을 부르는 방법도 있지만, 그 커넥션이 주문 기록과
+    공유되면 남의 미커밋 작업을 지운다.
+
+    **여기서 켜지 않고 요구한다.** 켜면 남의 커넥션 상태를 바꾸는 데다,
+    이미 트랜잭션이 열려 있으면 생성자가 터진다.
     """
 
     def __init__(
@@ -46,8 +52,13 @@ class LiveFeed(DataFeed):
         universe_size: int,
         liquidity_days: int,
     ) -> None:
+        if not conn.autocommit:
+            raise RuntimeError(
+                "LiveFeed 는 autocommit 커넥션을 받습니다."
+                " psycopg.connect(url, autocommit=True) 로 열고,"
+                " 주문을 기록하는 커넥션과 공유하지 마세요."
+            )
         self.conn = conn
-        self.conn.autocommit = True
         self.broker = broker
         self.close_time = close_time
         self.universe_size = universe_size

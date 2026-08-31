@@ -4391,3 +4391,27 @@ docstring 에 적었다.
 
 `BacktestFeed` 도 비어 있고 **부르는 곳이 없다.** `signal` 을 읽는
 DB 함수도 없다. 읽는 쪽이 생기면 그때 만든다.
+
+### autocommit 을 켜지 않고 요구한다 (2026-08-31)
+
+서버 테스트에서 3건이 깨졌다.
+
+```
+psycopg.ProgrammingError: can't change 'autocommit' now:
+connection in transaction status INTRANS
+```
+
+테스트가 기준일을 먼저 SELECT 해서 트랜잭션이 열린 채로 생성자에
+들어갔다. **테스트만의 문제가 아니었다.**
+
+`__init__` 에서 `self.conn.autocommit = True` 로 켜던 것이 문제다.
+
+- 남의 커넥션 상태를 바꾼다
+- **이미 트랜잭션이 열려 있으면 생성자가 터진다.** 4단계 엔진이 우연히
+  조회를 먼저 하면 같은 일이 난다
+
+켜는 대신 **요구하고 확인한다.** `autocommit` 이 아니면 `RuntimeError` 다.
+읽기만 하므로 트랜잭션 상태와 무관하고, 계약이 생성자에 드러난다.
+
+앞서 `db_conn` 테스트도 같은 뿌리에서 깨졌다 — **psycopg 는 SELECT 하나에도
+트랜잭션을 연다.** 커넥션을 넘겨받는 코드는 이 사실을 계약에 적어야 한다.

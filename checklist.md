@@ -479,6 +479,11 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
 **커서일은 `now()` 의 한국 날짜다.** UTC 날짜로 읽으면 오전 09:00 이전
 한국 시각이 전날로 밀린다 (CLAUDE.md 5).
 
+**커넥션은 autocommit 을 요구한다.** 켜주지 않는다 — 켜면 남의 커넥션
+상태를 바꾸는 데다, 이미 트랜잭션이 열려 있으면 생성자가 터진다.
+`psycopg.connect(url, autocommit=True)` 로 열고 **주문 기록 커넥션과
+공유하지 않는다.**
+
 **일봉이 안 쌓인 날은 유니버스가 빈다.** `universe_at` 이 그날 거래된
 종목을 요구하기 때문이다. **예외를 던지지 않는다** — `BacktestFeed` 와
 동작이 달라지면 그것이 곧 갈라짐이다. 일봉 적재 여부는 엔진이
