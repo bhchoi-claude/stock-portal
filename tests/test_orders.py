@@ -194,14 +194,26 @@ class _RaisingBroker(MockBroker):
         raise TimeoutError("응답 없음")
 
 
+def _open_ids(conn) -> set[str]:
+    """끝나지 않은 주문의 키를 읽고 **트랜잭션을 닫는다**.
+
+    psycopg 는 SELECT 하나에도 트랜잭션을 연다. 열어둔 채로 `place_order`
+    를 부르면 `transaction()` 이 거부한다 — 세이브포인트만 만들어져 커밋이
+    안 되는 사고를 막는 가드다 (`common/db/conn.py`).
+    """
+    with conn.cursor() as cur:
+        ids = {o.client_order_id for o in list_open_orders(cur, ACCOUNT)}
+    conn.rollback()
+    return ids
+
+
 def test_주문_실패해도_기록은_남는다(db_conn):
     """기록을 커밋한 뒤에 주문을 내기 때문이다.
 
     같은 트랜잭션에 두면 주문은 나갔는데 롤백되어 기록이 사라진다.
     그러면 다음에 같은 주문을 또 낸다.
     """
-    with db_conn.cursor() as cur:
-        before = {o.client_order_id for o in list_open_orders(cur, ACCOUNT)}
+    before = _open_ids(db_conn)
 
     with pytest.raises(TimeoutError):
         place_order(db_conn, _RaisingBroker(), **ORDER)
@@ -210,6 +222,8 @@ def test_주문_실패해도_기록은_남는다(db_conn):
         added = [
             o for o in list_open_orders(cur, ACCOUNT) if o.client_order_id not in before
         ]
+    db_conn.rollback()
+
     assert len(added) == 1
     assert added[0].status == "pending"
     assert added[0].quantity == 10
@@ -224,4 +238,7 @@ def test_체결되면_기록이_갱신된다(db_conn):
             "SELECT status, filled_qty FROM order_request WHERE client_order_id = %s",
             (result.client_order_id,),
         )
-        assert cur.fetchone() == ("filled", 10)
+        row = cur.fetchone()
+    db_conn.rollback()
+
+    assert row == ("filled", 10)
