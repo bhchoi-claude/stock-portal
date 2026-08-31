@@ -21,8 +21,10 @@ from ..types import (
     Candle,
     IndexClose,
     InvestorFlow,
+    OrderType,
     Position,
     Quote,
+    Side,
     StockState,
 )
 from .base import Broker, OrderRequest, OrderResult
@@ -48,6 +50,16 @@ INDEX_API = "ka20006"
 STATE_API = "ka10099"
 DEPOSIT_API = "kt00001"
 BALANCE_API = "kt00018"
+
+ORDER_PATH = "/api/dostk/ordr"
+BUY_API = "kt10000"
+SELL_API = "kt10001"
+
+# 국내 거래소 구분. 우리는 KRX 만 쓴다
+DOMESTIC_EXCHANGE = "KRX"
+
+# 0 보통(지정가), 3 시장가. 둘 다 2026-08-31 에 바디가 통과하는 것을 확인했다
+TRADE_TYPES = {OrderType.LIMIT: "0", OrderType.MARKET: "3"}
 
 # ka10099 의 시장 구분. 이 셋이면 stock 의 전 종목이 덮인다 (2026-08-29 실측).
 # 0 은 ETF·ETN 을 함께 주지만 우리 종목에 없어 그대로 흘려보낸다.
@@ -167,7 +179,12 @@ class KiwoomBroker(Broker):
                     time.sleep(wait)
 
     def _request(
-        self, path: str, headers: dict[str, str], body: dict[str, Any]
+        self,
+        path: str,
+        headers: dict[str, str],
+        body: dict[str, Any],
+        *,
+        check_return_code: bool = True,
     ) -> dict[str, Any]:
         request = urllib.request.Request(
             self._domain + path,
@@ -185,8 +202,9 @@ class KiwoomBroker(Broker):
             raise TransientError("키움 호출 실패: " + type(exc).__name__) from exc
 
         # HTTP 200 이어도 본문의 return_code 를 봐야 한다 (2026-08-25 실측)
+        # 주문은 거부 사유를 OrderResult 에 담아야 해서 예외를 끄고 부른다
         code = data.get("return_code")
-        if code not in (0, None):
+        if check_return_code and code not in (0, None):
             raise PermanentError(
                 "키움이 거부했습니다 ({}): {}".format(code, data.get("return_msg"))
             )
@@ -205,7 +223,13 @@ class KiwoomBroker(Broker):
         return PermanentError(f"키움 호출 거부 (HTTP {exc.code}).")
 
     def _call_once(
-        self, api_id: str, path: str, body: dict[str, Any], **extra: str
+        self,
+        api_id: str,
+        path: str,
+        body: dict[str, Any],
+        *,
+        check_return_code: bool = True,
+        **extra: str,
     ) -> dict[str, Any]:
         """호출 한 번. **재시도하지 않는다.**
 
@@ -216,7 +240,9 @@ class KiwoomBroker(Broker):
         self._throttle(api_id)
         headers = {**self._auth_header(), "api-id": api_id, **extra}
         try:
-            return self._request(path, headers, body)
+            return self._request(
+                path, headers, body, check_return_code=check_return_code
+            )
         finally:
             # 다음 호출은 이 호출이 끝난 시각부터 간격을 잰다
             self._last_call[api_id] = time.monotonic()
@@ -463,7 +489,71 @@ class KiwoomBroker(Broker):
     # ---- 주문 (Phase 8) ----
 
     def submit_order(self, req: OrderRequest) -> OrderResult:
-        raise NotImplementedError("주문은 Phase 8 이다.")
+        """주문을 접수한다. **재시도하지 않는다** (CLAUDE.md 3).
+
+        호출 전에 `client_order_id` 가 DB 에 기록돼 있어야 한다
+        (`INTERFACES.md` 2.1). 순서가 바뀌면 중복 주문을 막지 못한다.
+
+        **`client_order_id` 와 계좌번호를 키움에 보내지 않는다.** 필수 필드는
+        다섯이고 그 안에 둘 다 없다 (2026-08-31 실측). 계좌는 앱키·토큰에
+        묶이고, `client_order_id` 는 우리 쪽 멱등성 키다.
+
+        예외가 나오면 **접수됐는지 모르는 상태다.** 다시 걸지 말고
+        `get_order_status` 로 확인한다. 거부는 예외가 아니라
+        `status='rejected'` 로 돌아온다 — 접수 실패가 확정된 응답이다.
+        """
+        if req.order_type is OrderType.LIMIT and req.price is None:
+            # 주문이 나가기 전에 막는다. 빈 가격으로 보내면 시장가가 된다
+            raise PermanentError("지정가 주문에 가격이 없습니다.")
+
+        api_id = BUY_API if req.side is Side.BUY else SELL_API
+        body = {
+            "dmst_stex_tp": DOMESTIC_EXCHANGE,
+            "stk_cd": self.to_code(req.stock_id),
+            "ord_qty": str(req.quantity),
+            # 시장가는 빈 값이다. 생략해도 통과한다 (2026-08-31 실측)
+            "ord_uv": "" if req.price is None else str(req.price),
+            "trde_tp": TRADE_TYPES[req.order_type],
+        }
+        data = self._call_once(api_id, ORDER_PATH, body, check_return_code=False)
+
+        code = data.get("return_code")
+        if code not in (0, None):
+            return OrderResult(
+                client_order_id=req.client_order_id,
+                broker_order_no=None,
+                status="rejected",
+                filled_qty=0,
+                avg_fill_price=None,
+                # 사유를 그대로 남긴다. 한 건 본 것으로 형식을 단정하지 않는다
+                error_code=str(code),
+                error_message=data.get("return_msg"),
+            )
+
+        # 접수 응답이다. 체결 여부는 여기서 알 수 없고 get_order_status 가 준다
+        return OrderResult(
+            client_order_id=req.client_order_id,
+            broker_order_no=self._order_no(data),
+            status="submitted",
+            filled_qty=0,
+            avg_fill_price=None,
+        )
+
+    @staticmethod
+    def _order_no(data: dict[str, Any]) -> str | None:
+        """접수된 주문번호. **이 필드만 아직 실측하지 못했다** (2026-08-31).
+
+        성공 응답은 장중에만 나온다. 장 외 시간에는 `모의투자 장종료` 로
+        거부돼 필드를 볼 수 없었다. 규격상 `ord_no` 이고 장중 시험주문으로
+        확정한다.
+
+        틀렸을 때 조용히 None 이 되면 주문을 추적도 취소도 못 한다.
+        예외를 던지지는 않는다 — **주문은 이미 나갔다.**
+        """
+        order_no = data.get("ord_no")
+        if order_no is None:
+            logger.error("주문 응답에 주문번호가 없다. 응답 키: %s", sorted(data))
+        return order_no
 
     def cancel_order(self, account_id: str, broker_order_no: str) -> OrderResult:
         raise NotImplementedError("주문은 Phase 8 이다.")
