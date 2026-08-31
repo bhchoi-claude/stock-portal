@@ -75,3 +75,16 @@ messages_days: 7
 # 운영·로그 탭의 백테스트 실행 목록
 backtest_runs_limit: 20
 backtest_runs_max: 200
+
+# 자동매매 탭. 계좌·전략·프로세스 이름은 config/engine.yaml 에서 읽는다.
+# 여기 다시 적으면 두 곳이 어긋난다
+trading:
+  # 화면에 띄울 건수. 전부 상한일 뿐 성능 조절이 아니다.
+  # 보유 종목에는 상한을 두지 않는다 — limits.yaml 의 max_positions 가 이미
+  # 묶고 있고, 그보다 많아졌다면 그것이야말로 다 보여야 할 상황이다
+  signals_limit: 20
+  orders_limit: 30
+  commands_limit: 10
+
+  # 손익 추이를 며칠치 보여줄지
+  pnl_days: 14

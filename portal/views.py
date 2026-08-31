@@ -47,6 +47,12 @@ def news():
     )
 
 
+@views.get("/trading")
+def trading():
+    """자동매매 탭. 엔진이 DB 에 남긴 것만 본다 (CLAUDE.md 8)."""
+    return render_template("trading.html", active="trading", data=queries.trading())
+
+
 @views.get("/ops")
 def ops():
     return render_template(

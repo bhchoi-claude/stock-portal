@@ -11,6 +11,10 @@ swing:
   # Phase 8 은 모의투자, Phase 9 에서 swing 으로 바꾼다
   account_id: paper
 
+  # 전략. 백테스트 CLI 와 같은 이름을 쓴다 (config/strategy_{이름}.yaml).
+  # 포털도 이 값으로 signal 을 조회하므로 두 곳에 적지 않는다
+  strategy: swing
+
   # 루프 틱(초). command 폴링 주기이기도 하다.
   #
   # **비상 중단 버튼의 반응 속도가 이 값이다** (5단계). command 는 DB

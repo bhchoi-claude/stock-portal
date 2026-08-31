@@ -11,19 +11,21 @@ from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
 
 from .api import api
+from .control import control
 from .views import views
 
 SEOUL = ZoneInfo("Asia/Seoul")
 
 
 def create_app() -> Flask:
-    """조회 전용 앱. 제어 엔드포인트는 Phase 8 에 붙는다."""
+    """조회와 제어. 제어는 command 테이블에 기록만 한다 (CLAUDE.md 8)."""
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
     )
 
     app = Flask(__name__)
     app.register_blueprint(api)
+    app.register_blueprint(control)
     app.register_blueprint(views)
     app.register_error_handler(HTTPException, _as_json_if_api)
     app.add_template_filter(kst, "kst")

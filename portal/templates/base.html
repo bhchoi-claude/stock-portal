@@ -14,6 +14,8 @@
          class="{{ 'on' if active == 'dashboard' }}">대시보드</a>
       <a href="{{ url_for('views.market') }}"
          class="{{ 'on' if active == 'market' }}">시장분석</a>
+      <a href="{{ url_for('views.trading') }}"
+         class="{{ 'on' if active == 'trading' }}">자동매매</a>
       <a href="{{ url_for('views.news') }}"
          class="{{ 'on' if active == 'news' }}">정보수집</a>
       <a href="{{ url_for('views.ops') }}"

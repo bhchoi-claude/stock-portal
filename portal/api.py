@@ -1,4 +1,4 @@
-# 조회 API. INTERFACES.md 10장 조회 부분이다. 쓰기 엔드포인트는 두지 않는다
+# 조회 API. INTERFACES.md 10장 조회 부분이다. 제어는 control.py 에 있다
 
 from __future__ import annotations
 
@@ -68,6 +68,12 @@ def keywords_merge():
         raise BadRequest("병합할 키워드가 없습니다.")
 
     return jsonify(merged=queries.merge(into, from_ids))
+
+
+@api.get("/trading")
+def trading():
+    """자동매매 탭 전체 (INTERFACES.md 10장 조회)."""
+    return jsonify(queries.trading())
 
 
 @api.get("/processes")

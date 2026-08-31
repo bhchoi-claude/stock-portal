@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
 
 import psycopg
 
@@ -85,3 +87,42 @@ def sync_positions(
         (account_id, list(incoming)),
     )
     return mismatches
+
+
+@dataclass(frozen=True)
+class PositionView:
+    """화면이 보는 보유 종목. 종목명과 마지막 종가를 함께 준다.
+
+    종가는 `price_daily` 의 마지막 값이라 **장중에는 전날 종가다.** 포털은
+    브로커를 부르지 않는다 — 통신은 DB 로만 한다 (CLAUDE.md 8). 실시간
+    평가액이 필요하면 엔진이 `daily_pnl` 에 남긴 값을 본다.
+    """
+
+    stock_id: str
+    name: str | None
+    quantity: int
+    avg_price: Decimal
+    last_close: Decimal | None
+    opened_at: datetime | None
+    synced_at: datetime
+
+
+def position_views(cur: psycopg.Cursor, account_id: str) -> list[PositionView]:
+    """보유 종목에 종목명과 마지막 종가를 붙인다.
+
+    종가는 종목마다 따로 뽑는다. `price_daily` 의 PK 가 `(stock_id,
+    trade_date)` 라 종목당 한 행을 집는 것은 인덱스를 그대로 탄다.
+    """
+    cur.execute(
+        "SELECT p.stock_id, s.name, p.quantity, p.avg_price, d.close,"
+        " p.opened_at, p.synced_at"
+        " FROM position p"
+        " LEFT JOIN stock s ON s.stock_id = p.stock_id"
+        " LEFT JOIN LATERAL ("
+        "   SELECT close FROM price_daily WHERE stock_id = p.stock_id"
+        "   ORDER BY trade_date DESC LIMIT 1"
+        " ) d ON TRUE"
+        " WHERE p.account_id = %s ORDER BY p.stock_id",
+        (account_id,),
+    )
+    return [PositionView(*row) for row in cur.fetchall()]

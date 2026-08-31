@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 # 화면 버튼이 넣는 값. 엔진이 모르는 action 은 실패로 닫는다
 Action = Literal["stop", "halt_entry", "liquidate_all", "close_position"]
@@ -67,3 +68,56 @@ def complete(
         " WHERE command_id = %s",
         ("done" if ok else "failed", result, command_id),
     )
+
+
+@dataclass(frozen=True)
+class CommandView:
+    """화면이 보는 명령 한 건. 눌린 버튼이 처리됐는지 여기서 본다."""
+
+    command_id: int
+    target: str
+    action: str
+    params: dict[str, Any] | None
+    status: str
+    issued_by: str | None
+    result: str | None
+    created_at: datetime
+    completed_at: datetime | None
+
+
+def enqueue(
+    cur: psycopg.Cursor,
+    *,
+    target: str,
+    action: str,
+    params: dict[str, Any] | None = None,
+    issued_by: str | None = None,
+) -> int:
+    """명령을 넣는다. **포털이 엔진을 제어하는 유일한 방법이다** (CLAUDE.md 8).
+
+    포털은 넣기만 하고 결과를 기다리지 않는다. 엔진이 다음 폴링에 집는다.
+    눌렀는지 처리됐는지는 `status` 로 화면에서 본다.
+    """
+    if action not in ACTIONS:
+        raise ValueError(f"모르는 명령입니다: {action}")
+
+    cur.execute(
+        "INSERT INTO command (target, action, params, issued_by)"
+        " VALUES (%s, %s, %s, %s) RETURNING command_id",
+        (target, action, Jsonb(params) if params else None, issued_by),
+    )
+    row = cur.fetchone()
+    assert row is not None  # RETURNING 이 있으므로 항상 한 행이다
+    return int(row[0])
+
+
+def recent_commands(cur: psycopg.Cursor, target: str, limit: int) -> list[CommandView]:
+    """최근 명령. `'all'` 로 보낸 것도 함께 준다."""
+    cur.execute(
+        "SELECT command_id, target, action, params, status, issued_by, result,"
+        " created_at, completed_at"
+        " FROM command WHERE target IN (%s, 'all')"
+        " ORDER BY created_at DESC, command_id DESC LIMIT %s",
+        (target, limit),
+    )
+    return [CommandView(*row) for row in cur.fetchall()]

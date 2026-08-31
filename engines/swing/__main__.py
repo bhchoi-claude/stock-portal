@@ -20,6 +20,9 @@ from .engine import SwingEngine
 
 log = logging.getLogger(__name__)
 
+# 설정의 strategy 이름으로 고른다. backtest CLI 와 같은 방식이다
+STRATEGIES = {"swing": SwingStrategy}
+
 
 def main(argv: list[str]) -> int:
     logging.basicConfig(
@@ -29,7 +32,12 @@ def main(argv: list[str]) -> int:
     params = load_config("engine")["swing"]
     limits = load_config("limits")
     universe = load_config("universe")
-    strategy_params = load_config("strategy_swing")
+
+    name = params["strategy"]
+    if name not in STRATEGIES:
+        print(f"모르는 전략입니다: {name}")
+        return 1
+    strategy_params = load_config(f"strategy_{name}")
 
     account_id = params["account_id"]
     accounts = load_config("accounts")["accounts"]
@@ -61,7 +69,7 @@ def main(argv: list[str]) -> int:
             liquidity_days=universe["liquidity_days"],
         ),
         broker=broker,
-        strategy=SwingStrategy(),
+        strategy=STRATEGIES[name](),
         risk=RiskManager(limits["risk"]),
         strategy_params=strategy_params,
         params=params,

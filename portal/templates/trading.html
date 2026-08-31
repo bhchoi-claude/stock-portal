@@ -1,0 +1,125 @@
+{# 자동매매. 엔진이 DB 에 남긴 것만 본다. 버튼은 command 에 기록만 한다 #}
+{% extends "base.html" %}
+{% import "_macros.html" as m %}
+{% block title %}자동매매 · 증권 포털{% endblock %}
+
+{% block body %}
+<section>
+  <h2>엔진</h2>
+  {{ m.engine_state(data.engine) }}
+
+  {# 진입차단과 전량청산은 별개 명령이다. 화면에서도 버튼을 분리한다 (SCHEMA.md) #}
+  <div class="merge-bar">
+    <button id="halt">신규 진입 차단</button>
+    <span class="dim">청산은 계속 돈다</span>
+  </div>
+
+  {# 전량청산은 되돌릴 수 없다. 열고 토큰을 쳐야 눌린다 (INTERFACES.md 10.2) #}
+  <details class="danger">
+    <summary>전량 청산</summary>
+    <form id="liquidate">
+      <p class="dim wrap">
+        보유 종목 전부에 시장가 매도가 나간다. 되돌릴 수 없다.
+        진입도 함께 막힌다. 확인하려면 <b>LIQUIDATE</b> 를 친다.
+      </p>
+      <div class="merge-bar">
+        <input name="confirm" placeholder="LIQUIDATE" autocomplete="off" required>
+        <input name="reason" placeholder="사유 (선택)" autocomplete="off">
+        <button type="submit">전량 청산</button>
+      </div>
+    </form>
+  </details>
+</section>
+
+<section>
+  <h2>계좌 <span class="dim">{{ data.account_id }}</span></h2>
+  {% if data.pnl %}
+    {{ m.pnl_row(data.pnl[0]) }}
+  {% else %}
+    <p class="dim">스냅샷이 없다. 엔진이 15:40 에 남긴다.</p>
+  {% endif %}
+</section>
+
+<section>
+  <h2>보유 종목</h2>
+  {{ m.position_table(data.positions, data.account_id) }}
+</section>
+
+<section>
+  <h2>대기 중인 계획</h2>
+  {# 19:00 에 정해 다음 날 08:30 에 낸다. 수량은 그때 정해진다 #}
+  {{ m.signal_table(data.signals) }}
+</section>
+
+<section>
+  <h2>최근 주문</h2>
+  {{ m.order_table(data.orders) }}
+</section>
+
+<section>
+  <h2>제외 목록</h2>
+  <form id="add-filter" class="merge-bar">
+    <input name="stock_id" placeholder="KRX:005930" autocomplete="off" required>
+    <input name="reason" placeholder="사유 (선택)" autocomplete="off">
+    <input name="until_date" type="date" title="기한 (선택)">
+    <button type="submit">제외</button>
+  </form>
+  {{ m.filter_table(data.filters) }}
+</section>
+
+<section>
+  <h2>보낸 명령</h2>
+  {{ m.command_list(data.commands) }}
+</section>
+
+<script>
+  async function send(url, options) {
+    const response = await fetch(url, { method: "POST", ...options });
+    if (response.ok) {
+      location.reload();
+      return;
+    }
+    const body = await response.json().catch(() => ({}));
+    alert(body.error || "요청이 실패했습니다.");
+  }
+
+  document.getElementById("halt").addEventListener("click", () => {
+    if (confirm("신규 진입을 차단한다. 청산은 계속 돈다.")) {
+      send("/api/control/halt-entry");
+    }
+  });
+
+  document.getElementById("liquidate").addEventListener("submit", (event) => {
+    event.preventDefault();
+    send("/api/control/liquidate-all", { body: new FormData(event.target) });
+  });
+
+  document.getElementById("add-filter").addEventListener("submit", (event) => {
+    event.preventDefault();
+    send("/api/filters", { body: new FormData(event.target) });
+  });
+
+  document.querySelectorAll("button.close").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!confirm(`${button.dataset.name} 을 시장가로 전량 판다.`)) return;
+      const account = encodeURIComponent(button.dataset.account);
+      const stock = encodeURIComponent(button.dataset.stock);
+      send(`/api/positions/${account}/${stock}/close`);
+    });
+  });
+
+  document.querySelectorAll("button.unfilter").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const response = await fetch(`/api/filters/${button.dataset.id}`, {
+        method: "DELETE",
+      });
+      if (response.ok) {
+        location.reload();
+        return;
+      }
+      const body = await response.json().catch(() => ({}));
+      alert(body.error || "삭제에 실패했습니다.");
+    });
+  });
+</script>
+{% endblock %}

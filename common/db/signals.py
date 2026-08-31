@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -95,3 +96,39 @@ def consume(cur: psycopg.Cursor, signal_id: int) -> None:
         " WHERE signal_id = %s AND consumed_at IS NULL",
         (signal_id,),
     )
+
+
+@dataclass(frozen=True)
+class SignalView:
+    """화면이 보는 계획 한 건. 종목명을 함께 준다.
+
+    수량이 없다. 계획에 담지 않기 때문이다 — 매수는 08:30 에
+    `RiskManager` 가, 매도는 그때의 보유 수량이 정한다.
+    """
+
+    signal_id: int
+    stock_id: str
+    name: str | None
+    side: str
+    strength: Decimal | None
+    payload: dict[str, Any] | None
+    regime_at: str | None
+    created_at: datetime
+
+
+def open_signals(cur: psycopg.Cursor, strategy: str, limit: int) -> list[SignalView]:
+    """아직 주문으로 이어지지 않은 계획 전부. **`since` 로 자르지 않는다.**
+
+    엔진의 `pending_signals` 와 다르다. 엔진은 낡은 계획을 내면 안 되므로
+    거르지만, 화면은 남아 있는 것을 그대로 보여줘야 한다. 걸러서 보여주면
+    '계획이 있었는데 실행되지 않았다' 를 눈으로 볼 수 없다.
+    """
+    cur.execute(
+        "SELECT g.signal_id, g.stock_id, s.name, g.side, g.strength, g.payload,"
+        " g.regime_at, g.created_at"
+        " FROM signal g LEFT JOIN stock s ON s.stock_id = g.stock_id"
+        " WHERE g.strategy = %s AND g.consumed_at IS NULL"
+        " ORDER BY g.created_at DESC, g.signal_id DESC LIMIT %s",
+        (strategy, limit),
+    )
+    return [SignalView(*row) for row in cur.fetchall()]

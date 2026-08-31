@@ -38,11 +38,6 @@ nav a {
   white-space: nowrap;
 }
 
-/* 탭이 넷이라 좁은 화면에서 마지막 탭이 잘린다 */
-@media (max-width: 420px) {
-  nav a { font-size: 14px; padding: 13px 2px; }
-}
-
 nav a.on {
   color: var(--text);
   box-shadow: inset 0 -2px 0 var(--text);
@@ -76,6 +71,9 @@ td { font-variant-numeric: tabular-nums; }
 
 /* 표 안에서도 줄바꿈이 필요한 칸이 있다 */
 .wrap { white-space: normal; }
+
+/* 줄바꿈되는 칸 안에서 이것만은 붙여둔다. '엔진 미 / 반영' 으로 갈리면 읽히지 않는다 */
+.nowrap { white-space: nowrap; }
 
 /* 백테스트 경고는 그 실행의 숫자에 딸린 것이다. 선으로 가르지 않는다 */
 tr.has-note > td { border-bottom: none; }
@@ -118,3 +116,29 @@ select, button {
 
 button { cursor: pointer; }
 a { color: var(--text); }
+
+/* 되돌릴 수 없는 조작은 접어둔다. 열어야 버튼이 보인다 (INTERFACES.md 10.2) */
+details.danger {
+  border: 1px solid var(--bad);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin-top: 8px;
+}
+
+details.danger summary { color: var(--bad); cursor: pointer; }
+details.danger p { margin: 8px 0 0; }
+
+input {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font: inherit;
+  min-width: 0;
+}
+
+/* 탭이 다섯이 됐다. 좁은 화면에서 마지막 탭이 잘린다 */
+@media (max-width: 480px) {
+  nav a { font-size: 13px; padding: 13px 1px; }
+}

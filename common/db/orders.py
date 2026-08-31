@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 
 import psycopg
@@ -135,3 +136,37 @@ def list_open_orders(cur: psycopg.Cursor, account_id: str) -> list[OpenOrder]:
         (account_id, list(OPEN_STATUSES)),
     )
     return [OpenOrder(*row) for row in cur.fetchall()]
+
+
+@dataclass(frozen=True)
+class OrderView:
+    """화면이 보는 주문 한 건. 종목명을 함께 준다."""
+
+    order_id: int
+    stock_id: str
+    name: str | None
+    side: str
+    order_type: str
+    quantity: int
+    price: Decimal | None
+    status: str
+    filled_qty: int
+    avg_fill_price: Decimal | None
+    error_message: str | None
+    is_manual: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+def recent_orders(cur: psycopg.Cursor, account_id: str, limit: int) -> list[OrderView]:
+    """최근 주문. 끝난 것도 함께 준다 — 화면은 '오늘 뭐가 나갔나' 를 본다."""
+    cur.execute(
+        "SELECT o.order_id, o.stock_id, s.name, o.side, o.order_type, o.quantity,"
+        " o.price, o.status, o.filled_qty, o.avg_fill_price, o.error_message,"
+        " o.is_manual, o.created_at, o.updated_at"
+        " FROM order_request o LEFT JOIN stock s ON s.stock_id = o.stock_id"
+        " WHERE o.account_id = %s ORDER BY o.created_at DESC, o.order_id DESC"
+        " LIMIT %s",
+        (account_id, limit),
+    )
+    return [OrderView(*row) for row in cur.fetchall()]

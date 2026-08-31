@@ -125,3 +125,177 @@
   </table>
 </div>
 {% endmacro %}
+
+{% macro engine_state(e) %}
+{# 진입차단은 heartbeat detail 에서 온다. 프로세스 상태와 다른 것이라 따로 띄운다 #}
+<p class="lead">
+  {% if e.status == 'running' %}<span class="tag ok">가동</span>
+  {% elif e.status == 'error' %}<span class="tag error">실패</span>
+  {% elif e.status %}<span class="tag stale">{{ e.status }}</span>
+  {% else %}<span class="tag unknown">미기동</span>{% endif %}
+  {% if e.halt_entry %}<span class="tag error">진입차단</span>{% endif %}
+  <span class="dim">마지막 신호 {{ e.last_beat_at | kst }}</span>
+</p>
+{% endmacro %}
+
+{% macro pnl_row(p) %}
+{# 계좌 요약은 마지막 스냅샷(15:40)이다. 장중에는 그 시점 값이라 밝혀 적는다 #}
+<p class="lead">
+  <span class="score">{{ p.total_asset | num }}</span>
+  <span class="dim">원 · {{ p.trade_date }} 기준</span>
+</p>
+<p class="dim">
+  예수금 {{ p.deposit | num }} · 평가 {{ p.eval_amount | num }}
+  · 평가손익 {{ p.unrealized_pnl | num }} · 매매 {{ p.trade_count if p.trade_count is not none else '-' }}건
+</p>
+{% endmacro %}
+
+{% macro position_table(positions, account_id) %}
+{# 열이 셋이다. 넷을 넘기면 휴대폰에서 청산 버튼이 화면 밖으로 밀린다 —
+   데이터가 밀리는 것과 다르다. 스크롤할 수 있다는 걸 모르면 못 누른다 #}
+<div class="scroll">
+  <table>
+    <thead>
+      <tr><th>종목</th><th class="right">평가손익</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for p in positions %}
+      <tr>
+        <td>{{ p.name or p.stock_id }}
+          <div class="dim">{{ p.quantity }}주 × {{ p.avg_price | num }}
+            {%- if p.last_close %} · 종가 {{ p.last_close | num }}{% endif -%}
+          </div>
+        </td>
+        <td class="right">{{ p.pnl | num }}
+          <div class="dim">{{ p.pnl_rate | ratio_pct }}</div>
+        </td>
+        <td class="right">
+          <button class="close" data-account="{{ account_id }}"
+                  data-stock="{{ p.stock_id }}"
+                  data-name="{{ p.name or p.stock_id }}">청산</button>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3" class="dim">보유 종목이 없다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro signal_table(signals) %}
+{# 수량이 없다. 계획에 담지 않기 때문이다 — 08:30 에 정해진다 #}
+<div class="scroll">
+  <table>
+    <thead><tr><th>종목</th><th>방향</th><th class="right">강도</th><th>정한 때</th></tr></thead>
+    <tbody>
+      {% for s in signals %}
+      <tr>
+        <td>{{ s.name or s.stock_id }}<div class="dim wrap">{{ s.stock_id }}</div></td>
+        <td>{{ '매수' if s.side == 'BUY' else '매도' }}</td>
+        <td class="right">{{ s.strength | num }}</td>
+        <td class="dim">{{ s.created_at | kst }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="dim">대기 중인 계획이 없다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro order_table(orders) %}
+<div class="scroll">
+  <table>
+    <thead>
+      {# 수량은 체결의 분모로 합친다. 4/10 이 '10주 중 4주' 보다 빨리 읽힌다 #}
+      <tr><th>종목</th><th>방향</th><th class="right">체결</th><th>상태</th></tr>
+    </thead>
+    <tbody>
+      {% for o in orders %}
+      <tr>
+        <td>{{ o.name or o.stock_id }}
+          <div class="dim wrap">{{ o.created_at | kst }}
+            {%- if o.is_manual %} · 수동{% endif -%}
+            {%- if o.error_message %} · {{ o.error_message }}{% endif -%}
+          </div>
+        </td>
+        <td>{{ '매수' if o.side == 'BUY' else '매도' }}</td>
+        <td class="right">{{ o.filled_qty }}/{{ o.quantity }}
+          {%- if o.avg_fill_price %}<div class="dim">{{ o.avg_fill_price | num }}</div>{% endif -%}
+        </td>
+        <td><span class="tag {{ order_tag(o.status) }}">{{ order_text(o.status) }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="dim">주문 기록이 없다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
+
+{% macro order_tag(status) %}
+{%- if status == 'filled' -%}ok
+{%- elif status in ('rejected', 'pending') -%}error
+{%- else -%}stale{%- endif -%}
+{% endmacro %}
+
+{% macro order_text(status) %}
+{%- if status == 'pending' -%}미확인
+{%- elif status == 'submitted' -%}접수
+{%- elif status == 'partial' -%}부분체결
+{%- elif status == 'filled' -%}체결
+{%- elif status == 'cancelled' -%}취소
+{%- elif status == 'rejected' -%}거부
+{%- else -%}{{ status }}{%- endif -%}
+{% endmacro %}
+
+{% macro command_list(commands) %}
+{# 눌렀다와 엔진이 했다는 다른 것이다. 여기가 후자를 보는 자리다 #}
+<ul class="events">
+  {% for c in commands %}
+  <li>
+    <div class="meta">
+      <span class="tag {{ 'ok' if c.status == 'done' else ('error' if c.status == 'failed' else 'stale') }}">{{ c.status }}</span>
+      {{ c.created_at | kst }} · {{ c.action }}
+    </div>
+    {% if c.result %}<div class="wrap">{{ c.result }}</div>{% endif %}
+  </li>
+  {% else %}
+  <li class="dim">보낸 명령이 없다.</li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+
+{% macro filter_table(filters) %}
+<div class="scroll">
+  <table>
+    <thead><tr><th>종목</th><th>종류</th><th>기한</th><th></th></tr></thead>
+    <tbody>
+      {% for f in filters %}
+      <tr>
+        <td>{{ f.name or f.stock_id }}
+          <div class="dim wrap">{{ f.stock_id }} · {{ f.strategy }}
+            {%- if f.reason %} · {{ f.reason }}{% endif -%}
+            {# 화이트리스트 모드가 없어 엔진이 allow 를 보지 않는다.
+               좁은 칸에서 두 줄로 깨지므로 종류 열이 아니라 여기에 붙인다 #}
+            {%- if f.filter_type != 'block' %}
+            <span class="warn nowrap">엔진 미반영</span>{% endif -%}
+          </div>
+        </td>
+        <td>
+          {%- if f.filter_type == 'block' -%}<span class="tag error">제외</span>
+          {%- else -%}<span class="tag stale">허용</span>{%- endif -%}
+        </td>
+        <td class="dim">{{ f.until_date or '무기한' }}
+          {%- if f.expired %}<div class="warn">지남</div>{% endif -%}
+        </td>
+        <td class="right"><button class="unfilter" data-id="{{ f.filter_id }}">삭제</button></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="dim">목록이 비어 있다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}

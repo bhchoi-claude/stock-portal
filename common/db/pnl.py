@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
 
@@ -61,3 +62,27 @@ def snapshot(
             balance.currency,
         ),
     )
+
+
+@dataclass(frozen=True)
+class PnlRow:
+    """daily_pnl 한 행. `realized_pnl` 은 비어 있다 (원가를 모른다)."""
+
+    trade_date: date
+    deposit: Decimal | None
+    eval_amount: Decimal | None
+    total_asset: Decimal | None
+    realized_pnl: Decimal | None
+    unrealized_pnl: Decimal | None
+    trade_count: int | None
+
+
+def recent_pnl(cur: psycopg.Cursor, account_id: str, limit: int) -> list[PnlRow]:
+    """최근 손익 스냅샷. 최신이 먼저다."""
+    cur.execute(
+        "SELECT trade_date, deposit, eval_amount, total_asset, realized_pnl,"
+        " unrealized_pnl, trade_count"
+        " FROM daily_pnl WHERE account_id = %s ORDER BY trade_date DESC LIMIT %s",
+        (account_id, limit),
+    )
+    return [PnlRow(*row) for row in cur.fetchall()]

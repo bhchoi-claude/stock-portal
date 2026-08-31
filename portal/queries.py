@@ -13,14 +13,20 @@ import psycopg
 
 from common.config import load_config
 from common.db.backtest import RunRow, recent_runs
+from common.db.commands import CommandView, recent_commands
 from common.db.conn import connect, transaction
 from common.db.disclosures import Disclosure, recent_disclosures
 from common.db.events import EventRow, recent_events
+from common.db.filters import FilterRow, list_filters
 from common.db.heartbeat import ProcessState, list_heartbeats
 from common.db.indicators import IndicatorSnapshot, indicator_snapshot
 from common.db.keywords import DailyKeyword, daily_ranked, merge_keywords
 from common.db.messages import MessageView, collection_status, messages_for_keyword
+from common.db.orders import OrderView, recent_orders
+from common.db.pnl import PnlRow, recent_pnl
+from common.db.positions import PositionView, position_views
 from common.db.regime import RegimeRow, current_regime, regime_history
+from common.db.signals import SignalView, open_signals
 
 # 거래일은 시장 현지 기준이다. 서버 시계가 어디에 있든 KST 로 센다
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -323,3 +329,152 @@ def _day(value: date | None) -> str | None:
 def _ts(value: datetime | None) -> str | None:
     """UTC 로 저장된 시각을 그대로 낸다. 화면에서 현지 시각으로 바꾼다."""
     return None if value is None else value.isoformat()
+
+
+def trading() -> dict[str, Any]:
+    """자동매매 탭 한 번 호출로 필요한 것 전부.
+
+    **브로커를 부르지 않는다.** 엔진이 DB 에 남긴 것만 본다 — 포털과 엔진의
+    통신은 DB 로만 한다 (CLAUDE.md 8). 그래서 잔고는 마지막 `daily_pnl`
+    스냅샷(15:40)이고 장중에는 그 시점 값이다.
+    """
+    engine = load_config("engine")["swing"]
+    limits = load_config("portal")["trading"]
+    account_id = engine["account_id"]
+    process_name = engine["process_name"]
+    today = datetime.now(SEOUL).date()
+
+    with read_cursor() as cur:
+        states = {s.process_name: s for s in list_heartbeats(cur)}
+        pnl = recent_pnl(cur, account_id, limits["pnl_days"])
+        return {
+            "account_id": account_id,
+            "process_name": process_name,
+            "engine": _engine_state(states.get(process_name)),
+            "pnl": [_pnl(row) for row in pnl],
+            "positions": [_position(p) for p in position_views(cur, account_id)],
+            "signals": [
+                _signal(s)
+                for s in open_signals(cur, engine["strategy"], limits["signals_limit"])
+            ],
+            "orders": [
+                _order(o)
+                for o in recent_orders(cur, account_id, limits["orders_limit"])
+            ],
+            "commands": [
+                _command(c)
+                for c in recent_commands(cur, process_name, limits["commands_limit"])
+            ],
+            "filters": [_filter(f, today) for f in list_filters(cur)],
+        }
+
+
+def _engine_state(state: ProcessState | None) -> dict[str, Any]:
+    """엔진 상태와 진입차단 여부.
+
+    `halt_entry` 는 heartbeat 의 `detail` 에 들어 있다. 별도 테이블을 두지
+    않은 것은 이 값이 프로세스의 상태이지 영속 설정이 아니기 때문이다 —
+    엔진이 재시작하면 대조를 다시 하고 새로 판단한다.
+    """
+    if state is None:
+        return {"status": None, "halt_entry": None, "last_beat_at": None}
+    detail = state.detail or {}
+    return {
+        "status": state.status,
+        "halt_entry": detail.get("halt_entry"),
+        "last_beat_at": _ts(state.last_beat_at),
+        "started_at": _ts(state.started_at),
+        "age_seconds": round(state.age_seconds),
+    }
+
+
+def _pnl(row: PnlRow) -> dict[str, Any]:
+    return {
+        "trade_date": _day(row.trade_date),
+        "deposit": _num(row.deposit),
+        "eval_amount": _num(row.eval_amount),
+        "total_asset": _num(row.total_asset),
+        "realized_pnl": _num(row.realized_pnl),
+        "unrealized_pnl": _num(row.unrealized_pnl),
+        "trade_count": row.trade_count,
+    }
+
+
+def _position(row: PositionView) -> dict[str, Any]:
+    """평가금액과 손익은 여기서 낸다. 마지막 종가 기준이라 장중에는 전날 값이다."""
+    value = row.last_close * row.quantity if row.last_close is not None else None
+    cost = row.avg_price * row.quantity
+    return {
+        "stock_id": row.stock_id,
+        "name": row.name,
+        "quantity": row.quantity,
+        "avg_price": _num(row.avg_price),
+        "last_close": _num(row.last_close),
+        "cost": _num(cost),
+        "value": _num(value),
+        "pnl": _num(value - cost) if value is not None else None,
+        # 0 으로 나누지 않는다. 평단가가 0 인 포지션은 있을 수 없지만 방어한다
+        "pnl_rate": _num((value - cost) / cost) if value is not None and cost else None,
+        "opened_at": _ts(row.opened_at),
+        "synced_at": _ts(row.synced_at),
+    }
+
+
+def _signal(row: SignalView) -> dict[str, Any]:
+    return {
+        "signal_id": row.signal_id,
+        "stock_id": row.stock_id,
+        "name": row.name,
+        "side": row.side,
+        "strength": _num(row.strength),
+        "payload": row.payload,
+        "regime_at": row.regime_at,
+        "created_at": _ts(row.created_at),
+    }
+
+
+def _order(row: OrderView) -> dict[str, Any]:
+    return {
+        "order_id": row.order_id,
+        "stock_id": row.stock_id,
+        "name": row.name,
+        "side": row.side,
+        "order_type": row.order_type,
+        "quantity": row.quantity,
+        "price": _num(row.price),
+        "status": row.status,
+        "filled_qty": row.filled_qty,
+        "avg_fill_price": _num(row.avg_fill_price),
+        "error_message": row.error_message,
+        "is_manual": row.is_manual,
+        "created_at": _ts(row.created_at),
+        "updated_at": _ts(row.updated_at),
+    }
+
+
+def _command(row: CommandView) -> dict[str, Any]:
+    return {
+        "command_id": row.command_id,
+        "action": row.action,
+        "params": row.params,
+        "status": row.status,
+        "issued_by": row.issued_by,
+        "result": row.result,
+        "created_at": _ts(row.created_at),
+        "completed_at": _ts(row.completed_at),
+    }
+
+
+def _filter(row: FilterRow, today: date) -> dict[str, Any]:
+    return {
+        "filter_id": row.filter_id,
+        "stock_id": row.stock_id,
+        "name": row.name,
+        "strategy": row.strategy,
+        "filter_type": row.filter_type,
+        "reason": row.reason,
+        "until_date": _day(row.until_date),
+        # 만료된 것도 목록에 남긴다. 왜 막았는지가 기록이다
+        "expired": row.until_date is not None and row.until_date < today,
+        "created_at": _ts(row.created_at),
+    }
