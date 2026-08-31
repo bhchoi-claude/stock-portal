@@ -215,3 +215,57 @@ tail -f logs/swing.log
 ```sql
 INSERT INTO command (target, action, issued_by) VALUES ('engine-swing', 'halt_entry', 'manual');
 ```
+
+## 장중 시험주문 (일회용)
+
+Phase 8 1단계를 실측으로 닫는 작업이다. **아침에 사람이 못 앉아 있을 때**
+예약 실행으로 대신한다. 확인하려는 것 셋은 장중에만 나온다.
+
+- `submit_order` 성공 응답의 주문번호 필드 (`ord_no` 로 가정 중)
+- 미체결 상태의 `ord_stt` 값
+- 취소된 주문이 어느 목록에 남는가
+
+**하한가 지정가 1주**를 낸다. 정상 접수되면서 체결되지 않는다. 모의투자
+계좌라 체결돼도 상관없다 — 그것도 실측이다.
+
+```bash
+sudo cp deploy/stock-portal-testorder.service deploy/stock-portal-testorder.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now stock-portal-testorder.timer
+systemctl list-timers stock-portal-testorder.timer
+```
+
+`.timer` 에 **날짜가 박혀 있다.** 다른 날 돌리려면 `OnCalendar` 을 고친다.
+
+돌고 나면 응답 원문이 전부 남는다. 이 파일을 통째로 붙여주면 파서를 고치고
+테스트에 샘플로 고정한다.
+
+```bash
+cat ~/stock-portal/logs/testorder.json
+```
+
+진행 상황은 로그로 본다.
+
+```bash
+tail -f ~/stock-portal/logs/testorder.log
+```
+
+### 안전장치
+
+- `logs/testorder.done` 이 있으면 **다시 돌지 않는다.** 타이머가 두 번
+  발화해도 주문은 한 번만 나간다
+- **기준가가 전 거래일 종가로 넘어간 뒤에만** 주문한다. 장 전에 읽으면 지난
+  장의 하한가가 나오고, 그것으로 내면 범위를 벗어나 거부된다.
+  최대 20분(60초 × 20회) 기다리고, 그래도 안 넘어가면 **주문하지 않는다**
+- **응답을 못 받으면 즉시 멈춘다.** 접수 여부를 모르는 상태에서 다시 걸면
+  중복 주문이다 (CLAUDE.md 3). 명확한 거부만 최대 3회까지 다시 낸다
+- 주문이 나가면 **반드시 취소까지 간다.** 중간 조회가 실패해도 멈추지 않는다
+
+### 끝나면 지운다
+
+1단계가 닫히면 유닛과 도구를 함께 지운다. 일회용이다.
+
+```bash
+sudo systemctl disable --now stock-portal-testorder.timer
+sudo rm /etc/systemd/system/stock-portal-testorder.{service,timer}
+```

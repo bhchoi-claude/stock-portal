@@ -9,7 +9,8 @@
 > 남은 일이 셋이고 **서로 독립이다.**
 >
 > **가. 장중 시험주문** — 1단계를 실측으로 닫는다. 장이 열려야 한다.
-> 절차는 아래 "장중 시험주문 절차" 에 6단계로 있고 **0번이 `git pull`** 이다.
+> **예약 실행을 걸어뒀으면** 그날 저녁에 `logs/testorder.json` 을 보면 된다.
+> 손으로 할 때는 아래 "장중 시험주문 절차" 6단계이고 **0번이 `git pull`** 이다.
 > 응답을 받으면 파서 확인 → 샘플 고정 → 1단계 완료.
 >
 > **나. 엔진 기동** — `deploy/README.md` 의 "스윙 매매 엔진" 에 절차가 있다.
@@ -270,6 +271,24 @@ API 가이드가 SPA 라 본문이 안 열리고 모의투자 지원/미지원 �
 살 수 있는 가장 낮은 가격이라, 체결되려면 그날 하한가까지 떨어져야 한다.
 
 주문은 사용자가 직접 낸다.
+
+### 예약 실행으로 대신할 수 있다 (2026-08-31 확인 사항)
+
+아침에 못 앉아 있으면 `common/broker/testorder.py` 가 아래 6단계를 그대로
+돌리고 **응답 원문을 전부 파일로 남긴다.** 절차는 `deploy/README.md` 의
+"장중 시험주문 (일회용)" 에 있다.
+
+```bash
+sudo cp deploy/stock-portal-testorder.service deploy/stock-portal-testorder.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now stock-portal-testorder.timer
+```
+
+**"주문은 사용자가 직접 낸다" 는 원칙을 여기서만 푼다.** 모의투자·1주·
+하한가 지정가라 잃을 것이 없고, 얻는 것(1단계 마감)이 크다. 1단계가 닫히면
+유닛과 도구를 함께 지운다.
+
+손으로 할 때는 아래 순서를 따른다.
 
 #### 0. pull 먼저 (빠뜨리면 위험하다)
 

@@ -1,0 +1,17 @@
+[Unit]
+Description=stock-portal 장중 시험주문 (일회용, Phase 8 1단계 마감)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+
+# 하한가를 읽을 때까지 최대 20분, 주문 재시도까지 합쳐 넉넉히 잡는다
+TimeoutStartSec=3600
+
+ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m common.broker.testorder
+
+StandardOutput=append:/home/bh-server/stock-portal/logs/testorder.log
+StandardError=append:/home/bh-server/stock-portal/logs/testorder.log
