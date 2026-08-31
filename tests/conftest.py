@@ -21,3 +21,43 @@ def cur():
     finally:
         conn.rollback()
         conn.close()
+
+
+@pytest.fixture
+def db_conn():
+    """실제로 커밋이 일어나는 커넥션. 끝나면 이 테스트가 만든 행만 지운다.
+
+    `place_order` 는 주문을 내기 **전에** 기록을 커밋한다
+    (`INTERFACES.md` 2.1). 롤백 픽스처로는 그 순서를 확인할 수 없다.
+
+    지우는 범위를 `order_id` 수위표와 계좌로 좁힌다. 같은 DB 에서 엔진이
+    동시에 돌면 그 행까지 지울 수 있으므로, 모의투자 계좌로만 돌린다.
+    """
+    try:
+        url = load_database_url()
+    except RuntimeError:
+        pytest.skip("DATABASE_URL 이 없어 DB 통합 테스트를 건너뜁니다")
+
+    conn = psycopg.connect(url)
+    with conn.cursor() as c:
+        c.execute("SELECT COALESCE(MAX(order_id), 0) FROM order_request")
+        watermark = c.fetchone()[0]
+    conn.commit()
+
+    try:
+        yield conn
+    finally:
+        with conn.cursor() as c:
+            c.execute(
+                "DELETE FROM execution WHERE order_id IN"
+                " (SELECT order_id FROM order_request"
+                "  WHERE order_id > %s AND account_id = 'paper')",
+                (watermark,),
+            )
+            c.execute(
+                "DELETE FROM order_request"
+                " WHERE order_id > %s AND account_id = 'paper'",
+                (watermark,),
+            )
+        conn.commit()
+        conn.close()

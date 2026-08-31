@@ -433,13 +433,31 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
 
 ## 2단계 — 중복 주문 방지
 
-- [ ] **취소 결과로 `filled_qty` 를 덮어쓰지 않는다.** `cancel_order` 가
-      돌려주는 0 은 '모른다' 이지 '체결이 없었다' 가 아니다. 취소 응답에
-      체결량이 없다. 부분체결된 주문을 취소한 뒤 덮어쓰면 체결 기록이
-      사라진다. 체결량은 `get_order_status` 로 따로 본다
-- [ ] `client_order_id` 를 주문 **전에** 기록한다
-- [ ] **중복 `client_order_id` 가 차단되는 테스트** (CLAUDE.md 필수)
-- [ ] 응답 없음 → `get_order_status` 로 확인. **재시도하지 않는다**
+- [x] `common/db/orders.py` — `record_pending` / `apply_result` /
+      `list_open_orders` (2026-08-31)
+- [x] `common/order.py` — ULID 생성과 `place_order` 흐름.
+      `common/risk.py` 와 같은 최상위 자리다
+- [x] `client_order_id` 를 주문 **전에** 기록한다. **INSERT 를 커밋한 뒤에**
+      주문을 낸다 — 같은 트랜잭션이면 주문은 나갔는데 롤백되어 기록이
+      사라진다
+- [x] **중복 `client_order_id` 가 차단되는 테스트** (CLAUDE.md 필수)
+- [x] **취소 결과로 `filled_qty` 를 덮어쓰지 않는다** — 문서가 아니라
+      SQL 로 막았다. `GREATEST(filled_qty, %s)` 라 체결량이 줄지 않는다.
+      늦게 도착한 오래된 응답도 같이 막힌다
+- [x] 응답 없음 → 예외를 올리고 행은 `pending` 으로 남는다.
+      **재시도하지 않는다**
+- [ ] **서버에서 DB 테스트 7건을 돌려 확인한다.** 로컬은 `DATABASE_URL`
+      이 없어 skip 된다
+
+### ULID 를 직접 구현했다 (2026-08-31 확인 사항)
+
+48비트 밀리초 + 80비트 난수를 Crockford Base32 26자로 인코딩한다.
+의존성을 늘리지 않으려고 직접 짰다 — 운영 의존성이 여섯 개뿐이고 전부
+없으면 안 되는 것들이다.
+
+**단조증가를 보장하지 않는다.** 같은 밀리초에 두 번 부르면 순서가 섞인다.
+시간순은 `created_at` 인덱스가 잡고 중복은 DB 의 UNIQUE 가 막는다.
+정렬 가능성을 실제로 쓰는 곳이 없다.
 
 ## 3단계 — LiveFeed
 
