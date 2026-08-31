@@ -597,3 +597,74 @@ def test_한_주문이_여러_행이면_조용히_넘어가지_않는다(monkeyp
         broker.get_order_status("paper", "0060327", "01JABC")
 
     assert "0060327" in caplog.text
+
+
+# ---- 주문 취소 ----
+
+
+def _cancel_broker(monkeypatch, response: dict, sent: list) -> KiwoomBroker:
+    broker = KiwoomBroker.__new__(KiwoomBroker)
+
+    def fake_call_once(api_id, path, body, **kwargs):
+        sent.append((api_id, path, body, kwargs))
+        return response
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("취소가 재시도 경로(_call)를 탔다")
+
+    monkeypatch.setattr(broker, "_call_once", fake_call_once)
+    monkeypatch.setattr(broker, "_call", forbidden)
+    return broker
+
+
+def test_취소_바디를_실측_규격대로_보낸다(monkeypatch):
+    sent = []
+    broker = _cancel_broker(monkeypatch, {"return_code": 0, "ord_no": "0060999"}, sent)
+
+    broker.cancel_order("paper", "0060327", "01JABC", "KRX:005930")
+
+    assert sent[0][0] == "kt10003"
+    assert sent[0][1] == "/api/dostk/ordr"
+    assert sent[0][2] == {
+        "dmst_stex_tp": "KRX",
+        "orig_ord_no": "0060327",
+        "stk_cd": "005930",
+        # 0 이면 잔량 전부 취소다
+        "cncl_qty": "0",
+    }
+
+
+def test_취소는_원_주문번호를_돌려준다(monkeypatch):
+    """키움은 취소에 새 주문번호를 발급한다. 그걸 담으면 추적하던
+    번호가 바뀐다."""
+    sent = []
+    broker = _cancel_broker(monkeypatch, {"return_code": 0, "ord_no": "0060999"}, sent)
+
+    result = broker.cancel_order("paper", "0060327", "01JABC", "KRX:005930")
+
+    assert result.broker_order_no == "0060327"
+    assert result.status == "cancelled"
+    assert result.client_order_id == "01JABC"
+
+
+def test_취소_거부는_예외다(monkeypatch):
+    """주문 거부와 다르다. 취소 실패는 주문의 상태를 확정하지 않는다.
+
+    15:30 일괄 취소 중 방금 체결된 건이 여기로 온다.
+    """
+    sent = []
+    broker = _cancel_broker(
+        monkeypatch, {"return_code": 20, "return_msg": "[2000](RC...)"}, sent
+    )
+
+    with pytest.raises(PermanentError):
+        broker.cancel_order("paper", "0060327", "01JABC", "KRX:005930")
+
+
+def test_취소도_거부_사유를_읽으려_검사를_끈다(monkeypatch):
+    sent = []
+    broker = _cancel_broker(monkeypatch, {"return_code": 0, "ord_no": "0060999"}, sent)
+
+    broker.cancel_order("paper", "0060327", "01JABC", "KRX:005930")
+
+    assert sent[0][3] == {"check_return_code": False}

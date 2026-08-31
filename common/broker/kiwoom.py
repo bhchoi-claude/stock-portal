@@ -59,6 +59,10 @@ FILLED_API = "ka10076"
 KRX_STEX_TP = "1"
 BUY_API = "kt10000"
 SELL_API = "kt10001"
+CANCEL_API = "kt10003"
+
+# 취소수량 0 은 잔량 전부 취소다 (kt10003 규격)
+CANCEL_REMAINING = "0"
 
 # 국내 거래소 구분. 우리는 KRX 만 쓴다
 DOMESTIC_EXCHANGE = "KRX"
@@ -567,7 +571,57 @@ class KiwoomBroker(Broker):
         client_order_id: str,
         stock_id: str,
     ) -> OrderResult:
-        raise NotImplementedError("취소는 응답 실측 뒤에 만든다.")
+        """미체결 잔량을 전부 취소한다 (`kt10003`).
+
+        **재시도하지 않는다.** 주문과 같은 경로를 쓴다 (CLAUDE.md 3).
+
+        `stk_cd` 가 필수라 `stock_id` 를 받는다 (2026-08-31 실측).
+
+        **돌려주는 주문번호는 원 주문번호다.** 키움은 취소에 새 주문번호를
+        발급하는데(응답의 `ord_no`), 그것을 담으면 엔진이 추적하던 번호가
+        바뀐다. 새 번호는 로그에만 남긴다.
+
+        **`filled_qty` 를 이 결과에서 가져다 쓰지 않는다.** 취소 응답에
+        체결량이 없다 — 취소수량(`cncl_qty`)만 온다. 여기의 0 은 '모른다'
+        이지 '체결이 없었다' 가 아니다. 부분체결된 주문을 취소한 뒤 이
+        값으로 DB 를 덮어쓰면 체결 기록이 사라진다. 체결량은
+        `get_order_status` 가 준다.
+
+        취소가 거부되면 **예외를 던진다.** `submit_order` 와 다르다.
+        주문 거부는 그 주문의 최종 상태를 확정하지만(`rejected`), 취소
+        거부는 주문의 상태를 확정하지 않는다 — 주문은 여전히 살아 있거나
+        이미 체결됐다. `OrderResult` 는 주문을 기술하는 타입이라 취소 실패를
+        담을 자리가 아니다. 15:30 일괄 취소 중 방금 체결된 건이 여기로 온다.
+        """
+        data = self._call_once(
+            CANCEL_API,
+            ORDER_PATH,
+            {
+                "dmst_stex_tp": DOMESTIC_EXCHANGE,
+                "orig_ord_no": broker_order_no,
+                "stk_cd": self.to_code(stock_id),
+                "cncl_qty": CANCEL_REMAINING,
+            },
+            check_return_code=False,
+        )
+
+        code = data.get("return_code")
+        if code not in (0, None):
+            raise PermanentError(
+                "취소가 거부됐습니다 ({}): {}".format(code, data.get("return_msg"))
+            )
+
+        # 새 주문번호를 남긴다. 취소 뒤 조회에서 이 번호로 뜰 수 있다
+        logger.info(
+            "주문 %s 취소 접수 (취소주문번호 %s)", broker_order_no, data.get("ord_no")
+        )
+        return OrderResult(
+            client_order_id=client_order_id,
+            broker_order_no=broker_order_no,
+            status="cancelled",
+            filled_qty=0,
+            avg_fill_price=None,
+        )
 
     def get_order_status(
         self, account_id: str, broker_order_no: str, client_order_id: str

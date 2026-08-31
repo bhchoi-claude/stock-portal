@@ -175,8 +175,9 @@ API 가이드가 SPA 라 본문이 안 열리고 모의투자 지원/미지원 �
 
 ## 1단계 — 브로커 API
 
-`cancel_order` 가 `NotImplementedError` 로 남아 있다
-(`common/broker/kiwoom.py`).
+`subscribe`·`unsubscribe`(웹소켓)만 `NotImplementedError` 로 남아 있다
+(`common/broker/kiwoom.py`). 스윙 엔진은 일봉으로 도니 실시간 구독이
+필요 없다.
 
 **읽기 전용부터 만든다** (2026-08-30 순서 변경). 모의투자에서 주문이 되는지
 확실하지 않은데, 계좌에 묶인 조회 API 가 돌면 불확실성이 크게 줄어든다.
@@ -193,10 +194,9 @@ API 가이드가 SPA 라 본문이 안 열리고 모의투자 지원/미지원 �
       실측 응답으로 고정했다
 - [x] `submit_order` — 실측 규격으로 구현 (2026-08-31). 요청부는 확정,
       **성공 응답의 주문번호 필드만 미확정**이다
-- [ ] `cancel_order` — 요청 규격은 나왔고 **응답이 미확정**이다. 취소
-      응답에 체결수량이 없고 주문번호가 새로 발급된다 (`ord_no` 는 새 번호,
-      `base_orig_ord_no` 가 원 번호). 어느 쪽을 `OrderResult` 에 담을지
-      실측 뒤에 정한다
+- [x] `cancel_order` — 구현했다 (2026-08-31). **성공 응답의 필드에
+      로직이 걸려 있지 않다** — `return_code == 0` 이면 접수이고, 새
+      주문번호는 로그에만 쓴다. 내일 실측은 확인용이다
 - [x] **주문은 재시도 경로를 타지 않는다** — `_call_once` 를 분리했다.
       `probe.py` 도 이쪽을 쓴다. 이 도구로 시험주문을 낼 예정이라 재시도가
       남아 있으면 주문이 두 번 나간다
@@ -433,6 +433,10 @@ cd ~/stock-portal && .venv/bin/python -m common.broker.probe ka10076 /api/dostk/
 
 ## 2단계 — 중복 주문 방지
 
+- [ ] **취소 결과로 `filled_qty` 를 덮어쓰지 않는다.** `cancel_order` 가
+      돌려주는 0 은 '모른다' 이지 '체결이 없었다' 가 아니다. 취소 응답에
+      체결량이 없다. 부분체결된 주문을 취소한 뒤 덮어쓰면 체결 기록이
+      사라진다. 체결량은 `get_order_status` 로 따로 본다
 - [ ] `client_order_id` 를 주문 **전에** 기록한다
 - [ ] **중복 `client_order_id` 가 차단되는 테스트** (CLAUDE.md 필수)
 - [ ] 응답 없음 → `get_order_status` 로 확인. **재시도하지 않는다**
