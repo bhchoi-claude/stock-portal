@@ -36,13 +36,25 @@ class NewsAnalyzer:
         min_length: int,
         footers: Sequence[str],
         ad_patterns: Sequence[str],
+        min_term_length: int = 2,
     ) -> None:
         self.stocks = stocks
         # 긴 이름부터 본다. 'HD현대일렉트릭' 을 먼저 지워야 'HD현대' 가
         # 남지 않는다. 둘 다 실제로 언급된 글에서는 둘 다 잡힌다
         self.stock_names = sorted(stocks, key=len, reverse=True)
         self.codes = codes
-        self.keywords = keywords
+        # **짧은 키워드는 사전에서 거른다.** 종목명의 min_name_length 와 같은
+        # 이유다. 한 글자 한글 키워드는 경계 검사로도 못 막는다 —
+        # '금리' 는 '금' 이 맨 앞이라 왼쪽 경계가 깨끗하다. 오른쪽은 조사와
+        # 구분이 안 돼 볼 수 없다 (2026-09-01 실측)
+        self.keywords = {
+            term: keyword_id
+            for term, keyword_id in keywords.items()
+            if len(term) >= min_term_length
+        }
+        # 종목명과 같은 이유로 긴 표현부터 본다. 'HBM3E' 를 먼저 지워야
+        # 'HBM' 이 남은 조각에 또 걸리지 않는다
+        self.keyword_terms = sorted(self.keywords, key=len, reverse=True)
         self.min_length = min_length
         self.footers = footers
         self.ad_patterns = ad_patterns
@@ -92,15 +104,46 @@ class NewsAnalyzer:
     def match_keywords(self, content: str) -> tuple[list[int], str]:
         """키워드 사전 매칭. (대표 keyword_id, 미매칭 잔여 텍스트).
 
+        **낱말 경계를 지킨다.** 종목명과 같은 규칙이다. 부분문자열로 찾으면
+        한 글자짜리 키워드가 온갖 낱말 안에 걸린다 — 2026-09-01 에 '금' 이
+        `신주발행금지`·`금리`·`현금` 에 걸려 하루 26회로 상위에 올랐다.
+
+        종목명에는 처음부터 이 검사가 있었는데 키워드에는 없었다.
+        같은 위험을 한쪽만 막고 있었다.
+
         잡힌 표현은 잔여 텍스트에서 지운다. 남은 부분만 LLM 이 본다.
+        **지우는 것도 경계를 지킨다.** 그러지 않으면 `신주발행금지` 가
+        `신주발행 지` 가 되어 LLM 이 망가진 문장을 본다.
         """
         found: set[int] = set()
         rest = content
-        for term, keyword_id in self.keywords.items():
-            if term in rest:
-                found.add(keyword_id)
-                rest = rest.replace(term, " ")
+        for term in self.keyword_terms:
+            hit, rest = _strip(rest, term)
+            if hit:
+                found.add(self.keywords[term])
         return sorted(found), " ".join(rest.split())
+
+
+def _strip(text: str, name: str) -> tuple[bool, str]:
+    """낱말 경계를 지키며 지운다. (찾았는가, 남은 텍스트).
+
+    `_appears` 와 같은 경계 규칙이다. 앞에 글자가 붙어 있으면 다른 낱말이라
+    지우지 않고 넘어간다.
+    """
+    hit = False
+    pieces = []
+    start = 0
+    while (index := text.find(name, start)) != -1:
+        if index == 0 or not BOUNDARY.match(text[index - 1]):
+            hit = True
+            pieces.append(text[start:index])
+            pieces.append(" ")
+            start = index + len(name)
+        else:
+            pieces.append(text[start : index + 1])
+            start = index + 1
+    pieces.append(text[start:])
+    return hit, "".join(pieces)
 
 
 def _appears(text: str, name: str) -> bool:

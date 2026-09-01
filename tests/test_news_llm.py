@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from decimal import Decimal
 
-from collectors.news.llm import KeywordExtractor, clean_terms, cost_of
+from collectors.news.llm import SYSTEM, KeywordExtractor, clean_terms, cost_of
 
 PRICES = {"price_input_per_mtok": 1.0, "price_output_per_mtok": 5.0}
 
@@ -121,3 +121,14 @@ def test_workspace_header_only_when_set(monkeypatch):
 
     monkeypatch.setattr(analyze, "load_env", lambda key: "wrkspc_1")
     assert analyze.workspace_header() == {"anthropic-workspace-id": "wrkspc_1"}
+
+
+def test_한_글자_키워드는_받지_않는다():
+    """'금' 이 낱말 안에 걸려 하루 26회가 됐다 (2026-09-01). 애초에 막는다."""
+    assert clean_terms(["금", "은", "AI", "HBM"]) == ["AI", "HBM"]
+
+
+def test_프롬프트가_넓은_말을_버리라고_말한다():
+    """정렬을 급등도로 바꿔도, 매일 나오는 말은 배수가 안 움직여 쓸모가 없다."""
+    assert "좁은 것만" in SYSTEM
+    assert "두 글자 미만은 뽑지 않는다" in SYSTEM

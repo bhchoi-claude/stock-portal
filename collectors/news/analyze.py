@@ -46,6 +46,7 @@ def build_analyzer(cur, params: dict[str, Any]) -> NewsAnalyzer:
         min_length=params["min_length"],
         footers=params["footers"],
         ad_patterns=params["ad_patterns"],
+        min_term_length=params["keyword"]["min_term_length"],
     )
 
 

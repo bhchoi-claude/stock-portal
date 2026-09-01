@@ -4,7 +4,13 @@ from datetime import date
 from decimal import Decimal
 
 from collectors.news.aggregate import days_to_rebuild, describe
-from common.db.keywords import Surge, aggregate_day, refresh_surge, surging
+from common.db.keywords import (
+    Surge,
+    aggregate_day,
+    daily_ranked,
+    refresh_surge,
+    surging,
+)
 
 TODAY = date(2026, 8, 30)
 
@@ -100,6 +106,61 @@ def test_quiet_keyword_is_not_a_surge(cur):
 
 def test_aggregate_day_counts_nothing_without_mentions(cur):
     assert aggregate_day(cur, date(2020, 1, 1)) == 0
+
+
+def test_화면은_절대_빈도가_아니라_급등도로_줄_세운다(cur):
+    """2026-09-01 까지 mention_count 순이었다.
+
+    늘 많이 나오는 'AI'(39회, 2.97배)가 상위를 차지하고, 그날의 신호인
+    '폴더블'(9회, 63배)이 아래에 묻혔다. `SCHEMA.md` 가 "절대 빈도가 아니라
+    surge_ratio 가 신호다" 라고 못박고 있다.
+    """
+    common = _keyword(cur, "흔한말")
+    rare = _keyword(cur, "드문말")
+    for day in (date(2026, 8, 23), date(2026, 8, 24)):
+        _daily(cur, common, day, 40)
+        _daily(cur, rare, day, 1)
+    _daily(cur, common, TODAY, 39)  # 평소만큼
+    _daily(cur, rare, TODAY, 9)  # 평소의 몇 배
+    refresh_surge(cur, TODAY)
+
+    terms = [row.term for row in daily_ranked(cur, TODAY, 10)]
+
+    # 건수는 흔한말이 네 배 많지만 위에 오는 것은 드문말이다
+    assert terms.index("드문말") < terms.index("흔한말")
+
+
+def test_처음_나온_말은_건수를_배수_자리에_쓴다(cur):
+    """`ma7` 이 0 이라 배수를 낼 수 없다. NULLS LAST 로 밀면 새 테마가 묻힌다.
+
+    0회에서 10회가 된 것은 10배 급등과 크기가 비슷하다.
+    """
+    fresh = _keyword(cur, "오늘처음본말")
+    quiet = _keyword(cur, "밋밋한말")
+    for day in (date(2026, 8, 23), date(2026, 8, 24)):
+        _daily(cur, quiet, day, 10)
+    _daily(cur, fresh, TODAY, 10)  # 배수 없음, 건수 10
+    _daily(cur, quiet, TODAY, 12)  # 배수 약 1.2
+    refresh_surge(cur, TODAY)
+
+    terms = [row.term for row in daily_ranked(cur, TODAY, 10)]
+
+    assert terms.index("오늘처음본말") < terms.index("밋밋한말")
+
+
+def test_한_번_나온_신규는_위로_안_온다(cur):
+    """건수를 배수 자리에 쓰므로 1회는 1배와 같은 취급이다."""
+    once = _keyword(cur, "한번나온말")
+    surging_term = _keyword(cur, "튀어오른말")
+    for day in (date(2026, 8, 23), date(2026, 8, 24)):
+        _daily(cur, surging_term, day, 1)
+    _daily(cur, once, TODAY, 1)
+    _daily(cur, surging_term, TODAY, 8)
+    refresh_surge(cur, TODAY)
+
+    terms = [row.term for row in daily_ranked(cur, TODAY, 10)]
+
+    assert terms.index("튀어오른말") < terms.index("한번나온말")
 
 
 def _keyword(cur, term: str) -> int:

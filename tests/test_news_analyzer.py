@@ -115,3 +115,68 @@ def _with(stocks: dict[str, str]) -> NewsAnalyzer:
         footers=[],
         ad_patterns=[],
     )
+
+
+# --- 키워드 경계와 길이 (2026-09-01 실측에서 나온 것) -------------------------
+
+
+@pytest.fixture
+def gold():
+    """한 글자 키워드가 사전에 들어 있는 상태. 실제로 '금' 이 그랬다."""
+    return NewsAnalyzer(
+        stocks={},
+        codes={},
+        keywords={"금": 1, "AI": 2, "반도체": 3, "HBM": 4, "HBM3E": 5},
+        min_length=4,
+        footers=[],
+        ad_patterns=[],
+        min_term_length=2,
+    )
+
+
+def test_한_글자_키워드는_사전에서_걸러진다(gold):
+    """'금' 이 신주발행금지·금리·현금에 걸려 하루 26회로 상위에 올랐다.
+
+    낱말 경계 검사로는 못 막는다. '금리' 는 '금' 이 맨 앞이라 왼쪽 경계가
+    깨끗하고, 오른쪽은 조사와 구분이 안 돼 볼 수 없다.
+    """
+    for text in ("본느, 신주발행금지 가처분", "금리 인하 기대", "현금 흐름", "금 가격"):
+        assert gold.match_keywords(text)[0] == [], text
+
+
+def test_낱말_안에_든_키워드는_안_걸린다():
+    """종목명에는 처음부터 있던 검사다. 키워드에는 없었다."""
+    analyzer = NewsAnalyzer(
+        stocks={},
+        codes={},
+        keywords={"에너지": 1},
+        min_length=4,
+        footers=[],
+        ad_patterns=[],
+        min_term_length=2,
+    )
+    # '신재생에너지' 안의 '에너지' 는 앞에 글자가 붙어 있다
+    assert analyzer.match_keywords("신재생에너지 확대")[0] == []
+    assert analyzer.match_keywords("에너지 확대")[0] == [1]
+
+
+def test_긴_표현을_먼저_지운다(gold):
+    """'HBM3E' 를 먼저 지워야 'HBM' 이 남은 조각에 또 걸리지 않는다."""
+    found, rest = gold.match_keywords("HBM3E 양산")
+
+    assert found == [5]
+    assert "HBM" not in rest
+
+
+def test_지울_때도_경계를_지킨다(gold):
+    """경계를 무시하고 지우면 LLM 이 망가진 문장을 본다."""
+    _, rest = gold.match_keywords("반도체 업황과 신주발행금지 가처분")
+
+    # '반도체' 는 지워지고 '신주발행금지' 는 온전히 남는다
+    assert "반도체" not in rest
+    assert "신주발행금지" in rest
+
+
+def test_조사가_붙어도_걸린다(gold):
+    """오른쪽은 보지 않는다. '반도체가' 의 조사와 구분이 안 되기 때문이다."""
+    assert gold.match_keywords("반도체가 올랐다")[0] == [3]
