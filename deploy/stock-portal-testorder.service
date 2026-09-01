@@ -8,7 +8,7 @@ Type=oneshot
 User=bh-server
 WorkingDirectory=/home/bh-server/stock-portal
 
-# 08:25 에 시작해 16:12 까지 시각표대로 돈다. 9시간을 준다
+# 08:55 에 시작해 16:13 까지 시각표대로 돈다. 9시간을 준다
 TimeoutStartSec=32400
 
 ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m common.broker.testorder

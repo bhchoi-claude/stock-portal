@@ -167,23 +167,36 @@ def test_체결가와_시가의_차이를_비율로_낸다(args):
     """백테스트가 다음 날 시가 체결을 가정한다. 그 가정이 얼마나 맞는지가 값이다."""
     broker = FakeBroker(
         quotes=[quote(open_pric="+260000")],
-        lists={"ka10076": {"cntr": [{"ord_no": "0060503", "cntr_pric": "+260520"}]}},
+        lists={
+            "ka10076": {
+                "cntr": [
+                    {"ord_no": "0060503", "cntr_pric": "+260520"},
+                    {"ord_no": "0060504", "cntr_pric": "+259740"},
+                ]
+            }
+        },
     )
 
-    result = testorder._slippage(broker, {"market_buy": "0060503"}, args)
+    result = testorder._slippage(
+        broker, {"open_buy": "0060503", "late_buy": "0060504"}, args
+    )
 
     assert result["open_pric"] == "260000"
-    assert result["fill_price"] == "260520"
-    assert Decimal(result["slippage"]) == Decimal(520) / Decimal(260000)
+    first = result["samples"]["open_buy"]
+    assert first["fill_price"] == "260520"
+    assert Decimal(first["slippage"]) == Decimal(520) / Decimal(260000)
+    # 두 번째는 시가보다 싸게 체결됐다. 음수가 나와야 한다
+    assert Decimal(result["samples"]["late_buy"]["slippage"]) < 0
 
 
 def test_체결이_없으면_슬리피지를_내지_않는다(args):
     broker = FakeBroker(quotes=[quote()], lists={"ka10076": {"cntr": []}})
 
-    result = testorder._slippage(broker, {"market_buy": "0060503"}, args)
+    result = testorder._slippage(broker, {"open_buy": "0060503"}, args)
 
-    assert result["filled_row"] is None
-    assert "slippage" not in result
+    sample = result["samples"]["open_buy"]
+    assert sample["filled_row"] is None
+    assert "slippage" not in sample
 
 
 # --- 시각표 -------------------------------------------------------------------

@@ -24,7 +24,6 @@ from .kiwoom import (
     INFO_PATH,
     ORDER_PATH,
     QUOTE_API,
-    SELL_API,
     UNFILLED_API,
     KiwoomBroker,
     strip_sign,
@@ -36,13 +35,19 @@ SEOUL = ZoneInfo("Asia/Seoul")
 
 # 사람이 장중에 못 앉아 있을 때 대신 돌린다. 실측이 끝나면 유닛째 지운다.
 #
-# 재려는 것 넷 (checklist Phase 8)
-#   1. 슬리피지 — 동시호가 시장가의 체결가와 그날 시가의 차이.
-#      limits.yaml 의 0.001 은 실측 없이 잡은 값이고 백테스트가 통째로 걸려 있다
+# 09-01 에 넷 중 둘을 못 쟀다. 남은 셋만 다시 잰다 (2026-09-02).
+#
+#   1. 슬리피지 — **개장 직후 시장가**의 체결가와 그날 시가의 차이.
+#      동시호가로 재려 했으나 모의투자가 장시작전 주문을 안 받는다(RC4057).
+#      백테스트가 '다음 날 시가 체결' 을 가정하므로, 개장 직후에 내면 얼마나
+#      벌어지는가가 곧 실전에서 감수할 슬리피지다
 #   2. 15:30 취소 — 취소도 주문 API 라 장종료로 막힐 수 있다. 막히면 엔진
-#      시간표를 다시 짜야 한다
-#   3. 부분체결 — 한 주문이 여러 행으로 오면 get_order_status 의 수량이 틀린다
-#   4. 매도 경로 — kt10001 을 한 번도 안 썼다. 수수료·세금이 여기서 나온다
+#      시간표를 다시 짜야 한다. 09-01 에는 _sleep_until 결함으로 못 쟀다
+#   3. 취소된 주문의 행방 — 어느 목록에도 없으면 재시작 복구가 못 찾는다.
+#      09-01 에는 잔량이 없어 취소 자체가 거부됐다
+#
+# 이미 닫힌 것은 다시 재지 않는다 — 주문번호(ord_no), 매도 경로,
+# 수수료·세금, 부분체결 수량 판정 (INTERFACES.md 2.4)
 
 MAIN_CODE = "005930"  # 삼성전자. 시장가가 확실히 체결된다
 MAIN_STOCK_ID = "KRX:005930"
@@ -88,49 +93,55 @@ def _plan(args) -> list[tuple[str, str, Any]]:
     주문이 취소되지 않은 채 남는다.
     """
     return [
-        ("08:26", "잔고(개장 전)", _balance),
-        # --- 1. 슬리피지: 동시호가 시장가 ------------------------------------
-        ("08:28", "동시호가 시장가 매수", _buy_market),
-        # --- 미체결 상태 어휘: 하한가 지정가 ----------------------------------
-        (args.limit_at, "하한가 지정가 매수", _buy_limit),
-        ("09:02", "시가 대조 (슬리피지)", _slippage),
-        ("09:05", "미체결·상태 조회", _look),
-        # --- 3. 부분체결 ------------------------------------------------------
-        ("09:10", "부분체결 유도 주문", _buy_partial),
-        ("09:25", "부분체결 상태 조회", _look_partial),
-        ("09:30", "부분체결 주문 취소", _cancel_partial),
-        ("09:35", "취소 뒤 조회", _look_partial),
-        # --- 4. 매도 ----------------------------------------------------------
-        ("10:00", "시장가 매도", _sell_market),
-        ("10:10", "매도 체결 조회", _filled_step),
-        ("10:15", "잔고(매매 뒤)", _balance),
+        ("08:55", "잔고(개장 전)", _balance),
+        # --- 1. 슬리피지: 개장 직후 시장가 ------------------------------------
+        # 둘을 낸다. 09:00 정각이 거부되면 09:02 가 받아주고, 둘 다 되면
+        # **표본이 둘**이다. 개장 직후는 값이 크게 흔들려 한 번으로는 모른다
+        ("09:00", "개장 직후 시장가 매수", _buy_market("open_buy")),
+        ("09:02", "개장 2분 뒤 시장가 매수", _buy_market("late_buy")),
+        ("09:04", "시가 대조 (슬리피지)", _slippage),
+        # --- 3. 취소된 주문은 어디에 남는가 -------------------------------------
+        ("09:06", "하한가 지정가 매수", _buy_limit),
+        ("09:10", "미체결·상태 조회", _look),
+        ("09:15", "취소", _cancel_limit),
+        ("09:20", "취소 뒤 조회", _look),
         # --- 2. 15:30 취소가 되는가 --------------------------------------------
         ("15:25", "마감용 하한가 지정가 매수", _buy_closing),
         ("15:31", "취소 시도 15:31", _cancel_closing),
         ("15:45", "취소 시도 15:45", _cancel_closing),
         ("16:10", "취소 시도 16:10", _cancel_closing),
         ("16:12", "마지막 미체결 확인", _unfilled_step),
+        ("16:13", "잔고(마감 뒤)", _balance),
     ]
 
 
 # --- 1. 슬리피지 --------------------------------------------------------------
 
 
-def _buy_market(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
-    """**동시호가 시장가.** 엔진 시간표가 정확히 이 방식이다.
+def _buy_market(key: str):
+    """개장 직후 시장가 매수 1주를 내는 단계를 만든다.
+
+    **동시호가가 아니라 개장 직후다.** 모의투자는 장시작전 주문을 받지
+    않는다 (`RC4057`, 2026-09-01 실측). 백테스트는 다음 날 시가 체결을
+    가정하므로, 개장 직후 체결가가 시가에서 얼마나 벌어지는지가 실전에서
+    감수할 슬리피지다.
 
     `ord_uv` 는 빈 문자열이다. 시장가에 가격 필드가 필요 없는 것은
     2026-08-31 에 확인했지만, 규격에 있는 필드를 빼는 것보다 명시적이다.
     """
-    body = {
-        "dmst_stex_tp": "KRX",
-        "stk_cd": MAIN_CODE,
-        "ord_qty": "1",
-        "ord_uv": "",
-        "trde_tp": MARKET_ORDER,
-    }
-    state["market_buy"] = _order(broker, state, BUY_API, body)
-    return {"body": body, "ord_no": state["market_buy"]}
+
+    def run(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
+        body = {
+            "dmst_stex_tp": "KRX",
+            "stk_cd": MAIN_CODE,
+            "ord_qty": "1",
+            "ord_uv": "",
+            "trde_tp": MARKET_ORDER,
+        }
+        state[key] = _order(broker, state, BUY_API, body)
+        return {"body": body, "ord_no": state[key]}
+
+    return run
 
 
 def _slippage(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
@@ -138,25 +149,29 @@ def _slippage(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
 
     백테스트는 다음 날 시가에 `slippage_rate` 를 얹어 체결을 흉내낸다.
     실제로 얼마나 벌어지는지는 재봐야 안다.
+
+    표본 둘을 다 본다. 개장 직후는 값이 크게 흔들려 한 번으로는 모른다.
     """
     quote = broker._call_once(QUOTE_API, INFO_PATH, {"stk_cd": MAIN_CODE})
     filled = _filled(broker)
     open_price = strip_sign(quote["open_pric"])
 
-    row = _find(filled, state.get("market_buy"))
     result: dict[str, Any] = {
         "open_pric": str(open_price),
         "cur_prc": str(strip_sign(quote["cur_prc"])),
-        "ord_no": state.get("market_buy"),
-        "filled_row": row,
+        "samples": {},
     }
-
-    if row and open_price:
-        price = strip_sign(row.get("cntr_pric") or row.get("ord_uv") or "0")
-        result["fill_price"] = str(price)
-        if price:
-            # 매수라 시가보다 비싸게 사면 양수다
-            result["slippage"] = str((price - open_price) / open_price)
+    for key in ("open_buy", "late_buy"):
+        order_no = state.get(key)
+        row = _find(filled, order_no)
+        sample: dict[str, Any] = {"ord_no": order_no, "filled_row": row}
+        if row and open_price:
+            price = strip_sign(row.get("cntr_pric") or row.get("ord_uv") or "0")
+            sample["fill_price"] = str(price)
+            if price:
+                # 매수라 시가보다 비싸게 사면 양수다
+                sample["slippage"] = str((price - open_price) / open_price)
+        result["samples"][key] = sample
     return result
 
 
@@ -185,84 +200,13 @@ def _look(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
     }
 
 
-# --- 3. 부분체결 --------------------------------------------------------------
+def _cancel_limit(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
+    """하한가 주문을 취소한다. **취소된 주문이 어디에 남는지**가 여기서 나온다.
 
-
-def _buy_partial(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
-    """호가 물량보다 큰 수량을 지정가로 건다.
-
-    **부분체결을 확실히 만들 방법은 없다.** 호가 잔량을 모르기 때문이다.
-    현재가에 예산만큼 걸어두고 15분 기다리는 것이 최선이다. 다 체결되면
-    그것대로 기록하고 넘어간다.
+    09-01 에는 유도 주문이 전량 체결돼 잔량이 없어(`RC4033`) 취소 자체가
+    거부됐다. 하한가는 체결되지 않으므로 잔량이 확실히 남는다.
     """
-    quote = broker._call_once(QUOTE_API, INFO_PATH, {"stk_cd": args.partial_code})
-    price = strip_sign(quote["cur_prc"])
-    if not price:
-        return {"skipped": "현재가가 없다"}
-
-    quantity = int(Decimal(args.partial_budget) / price)
-    if quantity < 1:
-        return {"skipped": f"예산으로 한 주도 못 산다 (현재가 {price})"}
-
-    body = _limit_body(args.partial_code, str(quantity), str(int(price)))
-    state["partial_buy"] = _order(broker, state, BUY_API, body)
-    return {"cur_prc": str(price), "body": body, "ord_no": state["partial_buy"]}
-
-
-def _look_partial(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
-    """**한 주문이 여러 행으로 오는지**가 여기서 드러난다.
-
-    여러 행이면 `get_order_status` 의 수량 합산이 틀린다. 행을 하나만
-    찾지 않고 전부 담는다.
-    """
-    order_no = state.get("partial_buy")
-    return {
-        "ord_no": order_no,
-        "unfilled_rows": _rows(_unfilled(broker), order_no),
-        "filled_rows": _rows(_filled(broker), order_no),
-        "status": _status(broker, order_no),
-    }
-
-
-def _cancel_partial(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
-    """부분체결된 주문을 취소한다.
-
-    취소 응답에 체결량이 없다. `apply_result` 의 `GREATEST` 가 막는 바로
-    그 상황이라, 실제로 어떤 값이 오는지 봐둔다.
-    """
-    return _cancel(broker, state.get("partial_buy"), args.partial_code)
-
-
-# --- 4. 매도 ------------------------------------------------------------------
-
-
-def _sell_market(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
-    """보유분을 시장가로 판다. `kt10001` 을 한 번도 안 썼다."""
-    held = {p.stock_id: p.quantity for p in broker.get_positions(ACCOUNT_ID)}
-    quantity = min(held.get(MAIN_STOCK_ID, 0), args.sell_qty)
-    if quantity < 1:
-        return {"skipped": f"보유 수량이 없다: {held}"}
-
-    body = {
-        "dmst_stex_tp": "KRX",
-        "stk_cd": MAIN_CODE,
-        "ord_qty": str(quantity),
-        "ord_uv": "",
-        "trde_tp": MARKET_ORDER,
-    }
-    state["sell"] = _order(broker, state, SELL_API, body)
-    return {"held": held, "body": body, "ord_no": state["sell"]}
-
-
-def _filled_step(broker: KiwoomBroker, state: dict, args) -> dict[str, Any]:
-    """체결 목록 전체. **수수료·세금이 여기에만 있다** — `tdy_trde_cmsn`,
-    `tdy_trde_tax`. `execution` 이 둘을 반드시 기록하라고 한다 (SCHEMA.md)."""
-    filled = _filled(broker)
-    return {
-        "filled": _mask(filled),
-        "sell_rows": _rows(filled, state.get("sell")),
-        "status": _status(broker, state.get("sell")),
-    }
+    return _cancel(broker, state.get("limit_buy"), MAIN_CODE)
 
 
 # --- 2. 15:30 취소 ------------------------------------------------------------
@@ -529,15 +473,8 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
         "--force", action="store_true", help=".done 이 있어도 다시 돌린다"
     )
     parser.add_argument(
-        "--limit-at", default="08:35", help="하한가 지정가 주문을 낼 시각"
+        "--limit-at", default="09:06", help="하한가 지정가 주문을 낼 시각"
     )
-    parser.add_argument(
-        "--partial-code",
-        default="021050",
-        help="부분체결을 유도할 종목코드. 호가가 얇을수록 잘 걸린다",
-    )
-    parser.add_argument("--partial-budget", default="2000000")
-    parser.add_argument("--sell-qty", type=int, default=1)
     parser.add_argument("--price-attempts", type=int, default=10)
     parser.add_argument("--price-wait-sec", type=int, default=30)
     # 한 번에 오래 자지 않는다. 시계가 어긋났을 때 하루를 통째로 잃는다
