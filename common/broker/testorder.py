@@ -477,16 +477,25 @@ def _sleep_until(at: str, name: str, args) -> None:
     """시각까지 기다린다. **이미 지났으면 바로 한다.**
 
     늦게 시작해도 남은 단계는 돌아야 한다. 엔진의 시간표 판정과 같은 태도다.
+
+    **한 번 자고 마는 것이 아니라 도달할 때까지 돈다.** 2026-09-01 실측에서
+    `min(wait, max_wait_sec)` 로 한 시간만 자고 그대로 진행해, 15:25 단계가
+    11:15 에 돌고 15:30 취소 실험이 통째로 무의미해졌다.
+
+    한 번에 자는 시간에 상한을 두는 것은 그대로 둔다. 시계가 크게 어긋났을
+    때 하루를 통째로 잃지 않으려는 것이고, 다시 재는 지금은 그 값이
+    '얼마나 자주 확인하는가' 가 된다.
     """
     hour, minute = (int(part) for part in at.split(":"))
-    now = datetime.now(SEOUL)
-    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-    wait = (target - now).total_seconds()
-    if wait <= 0:
-        log.info("[%s] %s — 시각이 지나 바로 실행합니다", at, name)
-        return
-    log.info("[%s] %s — %.0f초 기다립니다", at, name, wait)
-    time.sleep(min(wait, args.max_wait_sec))
+    while True:
+        now = datetime.now(SEOUL)
+        target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        wait = (target - now).total_seconds()
+        if wait <= 0:
+            log.info("[%s] %s — 실행합니다", at, name)
+            return
+        log.info("[%s] %s — %.0f초 남았습니다", at, name, wait)
+        time.sleep(min(wait, args.max_wait_sec))
 
 
 def _step(record: dict[str, Any], out: pathlib.Path, name: str, call) -> None:

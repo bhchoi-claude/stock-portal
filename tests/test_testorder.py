@@ -1,7 +1,7 @@
 # 장중 실측 도구. 주문이 두 번 나가지 않는지가 이 파일의 요점이다
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -191,16 +191,22 @@ def test_체결이_없으면_슬리피지를_내지_않는다(args):
 
 @pytest.fixture
 def at_0825(monkeypatch):
-    """시계를 08:25 로 고정한다. 실제 시각에 기대면 자정 근처에서 깨진다."""
+    """08:25 에서 시작해 **잔 만큼 흐르는** 시계. 실제 시각에 기대면 자정
+    근처에서 깨지고, 멈춘 시계로는 기다림을 확인할 수 없다."""
+    clock = {"now": datetime(2026, 9, 1, 8, 25, tzinfo=SEOUL)}
+    slept: list[float] = []
 
     class Frozen(datetime):
         @classmethod
         def now(cls, tz=None):
-            return datetime(2026, 9, 1, 8, 25, tzinfo=SEOUL)
+            return clock["now"]
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        clock["now"] += timedelta(seconds=seconds)
 
     monkeypatch.setattr(testorder, "datetime", Frozen)
-    slept: list[float] = []
-    monkeypatch.setattr(testorder.time, "sleep", slept.append)
+    monkeypatch.setattr(testorder.time, "sleep", sleep)
     return slept
 
 
@@ -217,11 +223,14 @@ def test_시각까지_기다린다(args, at_0825):
     assert at_0825 == [180]
 
 
-def test_한_번에_너무_오래_자지_않는다(args, at_0825):
-    """시계가 어긋났을 때 하루를 통째로 잃지 않게 상한을 둔다."""
+def test_상한보다_먼_시각도_끝까지_기다린다(args, at_0825):
+    """**2026-09-01 에 여기서 깨졌다.** 한 시간만 자고 그대로 진행해
+    15:25 단계가 11:15 에 돌았다. 도달할 때까지 다시 재야 한다."""
     testorder._sleep_until("16:12", "먼 단계", args)
 
-    assert at_0825 == [args.max_wait_sec]
+    # 08:25 -> 16:12 는 28,020초. 3600 씩 자다 마지막에 남은 만큼만 잔다
+    assert sum(at_0825) == 7 * 3600 + 47 * 60
+    assert max(at_0825) == args.max_wait_sec
 
 
 def test_시각표가_시간_순이다(args):

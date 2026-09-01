@@ -16,9 +16,9 @@ ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.par
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.price_minute
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.trading_flow
 
-# 관리종목·거래정지는 키움에만 있다. 상태 이력을 쓰므로 종목 마스터(19시)와
-# 같은 날 안에서 순서가 엇갈려도 되도록 제자리 수정 경로를 둔다
-ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.stock_flags
+# stock_flags 를 여기서 뺐다 (2026-09-01). 상태 이력에 오늘 날짜로 새 구간을
+# 열어서, 19시 daily 가 **어제** 일봉을 채울 때 stock_status 의
+# '시간을 되돌리지 않는다' 가드에 걸렸다. 이제 daily 유닛 끝에서 돈다
 
 StandardOutput=append:/home/bh-server/stock-portal/logs/kiwoom.log
 StandardError=append:/home/bh-server/stock-portal/logs/kiwoom.log

@@ -19,5 +19,13 @@ ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.re
 # 판정 행이 생긴 뒤라야 그날의 시장 등락률을 채울 수 있다.
 # 지표 수집이 두 번 도는 이유다 (같은 값이라 덮어써도 무해하다)
 ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.indicators
+
+# **반드시 일봉 뒤다** (2026-09-01). stock_flags 는 상태 이력에 오늘 날짜로
+# 새 구간을 여는데, 그것이 stock_status 의 '시간을 되돌리지 않는다' 가드를
+# 올려버린다. 앞에서 돌면 daily 가 어제 일봉을 영영 못 채운다.
+#
+# KRX 는 D일 데이터를 D+1 에 공개한다. daily 는 늘 어제를 채우므로
+# 도장이 어제보다 뒤에 찍히면 안 된다
+ExecStart=-/home/bh-server/stock-portal/.venv/bin/python -m collectors.market.stock_flags
 StandardOutput=append:/home/bh-server/stock-portal/logs/daily.log
 StandardError=append:/home/bh-server/stock-portal/logs/daily.log
