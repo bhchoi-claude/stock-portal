@@ -87,6 +87,21 @@ TIMEOUT = 20.0
 # 만료 이 시간 전에 토큰을 새로 받는다
 TOKEN_MARGIN_SEC = 600
 
+# 본문 `return_code` 의 인증 실패. **토큰이 죽었다는 뜻이다** (2026-09-02 실측).
+#
+#   인증에 실패했습니다[8005:Token이 유효하지 않습니다]
+#
+# 키움은 앱키당 토큰 하나만 유효하게 한다. 시세 수집기가 전부 같은
+# 모의투자 앱키를 쓰므로(collect.yaml 의 use_paper), 16:10 키움 유닛이 돌면
+# 그때까지 살아 있던 다른 프로세스의 토큰이 무효화된다.
+#
+# 실측: 08:55 에 받은 토큰이 16:10 키움 유닛 발화 뒤 16:12 에 죽었다.
+# 만료(약 24시간)가 아니라 **다른 발급이 밀어낸 것**이다.
+#
+# 메시지의 세부 코드를 파싱하지 않는다. 한 건 본 것으로 형식을 단정하지
+# 않는다는 규칙이다 (context-notes 2026-08-31 (2)). return_code 로만 본다
+AUTH_FAILED_CODE = 3
+
 
 def strip_code_prefix(code: str) -> str:
     """잔고 응답의 종목코드는 `A005930` 처럼 앞에 글자가 붙는다 (2026-08-30 실측).
@@ -213,12 +228,35 @@ class KiwoomBroker(Broker):
         # HTTP 200 이어도 본문의 return_code 를 봐야 한다 (2026-08-25 실측)
         # 주문은 거부 사유를 OrderResult 에 담아야 해서 예외를 끄고 부른다
         code = data.get("return_code")
+
+        if code == AUTH_FAILED_CODE:
+            # **캐시한 토큰을 버린다.** 다른 프로세스가 같은 앱키로 새로
+            # 발급받아 이쪽 토큰이 죽은 상태다. 버려야 다음 호출이 다시 받는다.
+            #
+            # `check_return_code` 와 무관하게 버린다. 주문 경로는 예외를 끄고
+            # 부르는데, 거기서 안 버리면 죽은 토큰을 계속 들고 간다
+            self._token = None
+            self._expires_at = None
+
         if check_return_code and code not in (0, None):
-            raise PermanentError(
-                "키움이 거부했습니다 ({}): {}".format(code, data.get("return_msg"))
-            )
+            raise self._body_error(code, data.get("return_msg"))
         data["_headers"] = raw_headers
         return data
+
+    @staticmethod
+    def _body_error(code: Any, message: Any) -> Exception:
+        """본문 거부를 분류한다.
+
+        인증 실패만 `TransientError` 다. 토큰을 버렸으므로 다시 걸면 새
+        토큰으로 통한다. **조회는 이것으로 스스로 낫는다** (`_call` 이 재시도).
+
+        주문은 `_call_once` 라 재시도하지 않는다. 예외가 그대로 올라가고
+        호출부가 판단한다 (CLAUDE.md 3).
+        """
+        text = f"키움이 거부했습니다 ({code}): {message}"
+        if code == AUTH_FAILED_CODE:
+            return TransientError(text)
+        return PermanentError(text)
 
     @staticmethod
     def _http_error(exc: urllib.error.HTTPError) -> Exception:

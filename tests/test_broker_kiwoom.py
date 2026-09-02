@@ -4,7 +4,8 @@ import json
 import logging
 import threading
 import time
-from datetime import UTC, datetime
+import urllib.request
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -668,3 +669,85 @@ def test_취소도_거부_사유를_읽으려_검사를_끈다(monkeypatch):
     broker.cancel_order("paper", "0060327", "01JABC", "KRX:005930")
 
     assert sent[0][3] == {"check_return_code": False}
+
+
+# --- 토큰 무효화 (2026-09-02 실측) --------------------------------------------
+
+
+class _FakeResponse:
+    """`urlopen` 이 돌려주는 것 흉내. `json.load` 가 `read()` 를 부른다."""
+
+    def __init__(self, payload: dict) -> None:
+        self._body = json.dumps(payload).encode("utf-8")
+        self.headers: dict[str, str] = {}
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_) -> bool:
+        return False
+
+
+def _live_token_broker(monkeypatch, payload: dict) -> KiwoomBroker:
+    """토큰을 들고 있는 브로커. `_request` 를 진짜로 태운다."""
+    broker = KiwoomBroker.__new__(KiwoomBroker)
+    broker._domain = "https://mockapi.kiwoom.com"
+    broker._token = "살아있던토큰"
+    broker._expires_at = datetime.now(UTC) + timedelta(hours=20)
+    monkeypatch.setattr(
+        urllib.request, "urlopen", lambda *a, **k: _FakeResponse(payload)
+    )
+    return broker
+
+
+AUTH_FAILED = {
+    "return_code": 3,
+    "return_msg": "인증에 실패했습니다[8005:Token이 유효하지 않습니다]",
+}
+
+
+def test_인증_실패는_토큰을_버리고_재시도_가능으로_본다(monkeypatch):
+    """키움은 앱키당 토큰 하나만 유효하게 한다.
+
+    시세 수집기가 전부 같은 모의투자 앱키를 쓰므로, 16:10 키움 유닛이 돌면
+    그때까지 살아 있던 토큰이 무효화된다. 08:55 에 받은 토큰이 16:12 에
+    죽었다 (2026-09-02 실측). 만료가 아니라 다른 발급이 밀어낸 것이다.
+
+    `PermanentError` 로 두면 24시간 도는 엔진이 매일 오후부터 마비된다.
+    """
+    broker = _live_token_broker(monkeypatch, AUTH_FAILED)
+
+    with pytest.raises(TransientError):
+        broker._request("/api/dostk/acnt", {}, {})
+
+    # 버려야 다음 호출이 새로 받는다
+    assert broker._token is None
+    assert broker._expires_at is None
+
+
+def test_다른_거부는_그대로_영구_오류다(monkeypatch):
+    """입력 오류나 장종료는 다시 걸어도 같다. 토큰도 멀쩡하다."""
+    broker = _live_token_broker(
+        monkeypatch, {"return_code": 20, "return_msg": "모의투자 장종료"}
+    )
+
+    with pytest.raises(PermanentError):
+        broker._request("/api/dostk/ordr", {}, {})
+
+    assert broker._token == "살아있던토큰"
+
+
+def test_주문_경로에서도_죽은_토큰을_버린다(monkeypatch):
+    """주문은 거부 사유를 담으려고 예외를 끄고 부른다.
+
+    거기서 안 버리면 죽은 토큰을 계속 들고 간다.
+    """
+    broker = _live_token_broker(monkeypatch, AUTH_FAILED)
+
+    data = broker._request("/api/dostk/ordr", {}, {}, check_return_code=False)
+
+    assert data["return_code"] == 3  # 예외는 안 난다
+    assert broker._token is None  # 그래도 토큰은 버린다
