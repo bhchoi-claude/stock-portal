@@ -105,16 +105,59 @@ def test_주문번호_필드가_다르면_키_목록을_남긴다():
 # --- 하한가 -------------------------------------------------------------------
 
 
-def test_기준가가_맞으면_부호를_뗀_정수를_준다(args, close):
+@pytest.fixture
+def clock(monkeypatch):
+    """시각을 고정한다. 장중인지 아닌지로 동작이 갈린다."""
+
+    def at(hour: int, minute: int = 0):
+        class Frozen(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(2026, 9, 3, hour, minute, tzinfo=SEOUL)
+
+        monkeypatch.setattr(testorder, "datetime", Frozen)
+
+    return at
+
+
+def test_장중에는_대조_없이_하한가를_쓴다(args, clock, monkeypatch):
+    """**2026-09-01·09-02 에 여기서 두 번 막혔다.**
+
+    KRX 가 D일 데이터를 D+1 에 공개하므로 daily 는 늘 어제를 채운다.
+    아침의 최신 일봉은 항상 '그저께' 라 기준가('어제 종가')와 영원히
+    어긋난다. 장이 열린 뒤면 lst_pric 이 이미 오늘 값이다.
+    """
+    clock(9, 6)
+    monkeypatch.setattr(
+        testorder, "_last_close", lambda: pytest.fail("장중에는 일봉을 안 봐야 한다")
+    )
+    broker = FakeBroker(quotes=[quote(base="257000", low="-182000")])
+
+    # 기준가가 안 맞아도 하한가를 준다
+    assert testorder._limit_price(broker, args) == "182000"
+
+
+def test_장_전에는_기준가를_대조한다(args, clock, close):
+    """--limit-at 을 09:00 앞으로 옮기면 그때는 대조가 필요하다."""
+    clock(8, 35)
+    close(Decimal(260000))
+    broker = FakeBroker(quotes=[quote(base="257000")] * 3)
+
+    assert testorder._limit_price(broker, args) is None
+
+
+def test_기준가가_맞으면_부호를_뗀_정수를_준다(args, clock, close):
     """`ord_uv` 는 정수만 받는다. `-182000` 을 그대로 보내면 1517 로 거부된다."""
+    clock(8, 35)
     close(Decimal(260000))
     broker = FakeBroker(quotes=[quote()])
 
     assert testorder._limit_price(broker, args) == "182000"
 
 
-def test_기준가가_안_넘어갔으면_기다렸다_다시_본다(args, close):
+def test_기준가가_안_넘어갔으면_기다렸다_다시_본다(args, clock, close):
     """장 전에 읽으면 지난 장의 하한가가 나온다 (2026-08-31 실측)."""
+    clock(8, 35)
     close(Decimal(260000))
     broker = FakeBroker(quotes=[quote(base="257000", low="-180000"), quote()])
 
@@ -122,16 +165,18 @@ def test_기준가가_안_넘어갔으면_기다렸다_다시_본다(args, close
     assert len(broker.calls) == 2
 
 
-def test_끝까지_안_넘어가면_가격을_주지_않는다(args, close):
+def test_끝까지_안_넘어가면_가격을_주지_않는다(args, clock, close):
     """옛 하한가로 내면 범위를 벗어나 거부되고 아무것도 못 잰다."""
+    clock(8, 35)
     close(Decimal(260000))
     broker = FakeBroker(quotes=[quote(base="257000")] * 3)
 
     assert testorder._limit_price(broker, args) is None
 
 
-def test_일봉을_못_읽으면_대조를_건너뛴다(args, close):
+def test_일봉을_못_읽으면_대조를_건너뛴다(args, clock, close):
     """대조는 보조 수단이다. 없다고 멈추면 그날을 통째로 잃는다."""
+    clock(8, 35)
     close(None)
     broker = FakeBroker(quotes=[quote(base="257000", low="-180000")])
 

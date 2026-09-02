@@ -56,6 +56,9 @@ ACCOUNT_ID = "paper"
 MARKET_ORDER = "3"
 LIMIT_ORDER = "0"
 
+# 장이 열리는 시각(KST). 이 뒤로는 시세가 오늘 세션 값이다
+MARKET_OPEN_HOUR = 9
+
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse(argv)
@@ -356,13 +359,26 @@ def _limit_body(code: str, quantity: str, price: str) -> dict[str, str]:
 
 
 def _limit_price(broker: KiwoomBroker, args) -> str | None:
-    """오늘 하한가. **기준가가 전 거래일 종가로 넘어간 뒤에만 쓴다.**
+    """오늘 하한가. 부호를 뗀 정수로 준다 (`ord_uv` 는 정수만 받는다).
 
-    장 전에 읽으면 지난 장의 값이 나온다 (2026-08-31 실측). 그 하한가로
-    주문하면 범위를 벗어나 거부되고 아무것도 못 잰다.
+    **장이 열린 뒤에는 대조하지 않는다.** 세션이 이미 넘어가 `lst_pric` 이
+    오늘 값이다. 대조는 장 전에 읽을 때만 의미가 있었다 (2026-08-31 실측).
 
-    부호를 뗀 정수만 보낸다. `ord_uv` 는 정수만 받는다 (1517 실측).
+    게다가 `price_daily` 대조는 **아침에 구조적으로 못 맞는다.** KRX 가 D일
+    데이터를 D+1 에 공개하므로 `daily` 는 늘 어제를 채우고, 아침의 최신
+    일봉은 항상 '그저께' 다. 기준가는 '어제 종가' 라 영원히 어긋난다.
+    2026-09-01·09-02 에 연달아 이것 때문에 하한가 주문이 건너뛰어졌고
+    15:30 취소 실험이 두 번 무산됐다.
+
+    장 전 경로는 남겨둔다. `--limit-at` 을 09:00 앞으로 옮기면 그때는
+    대조가 필요하다.
     """
+    if datetime.now(SEOUL).hour >= MARKET_OPEN_HOUR:
+        data = broker._call_once(QUOTE_API, INFO_PATH, {"stk_cd": MAIN_CODE})
+        low = strip_sign(data["lst_pric"])
+        log.info("장중이라 대조 없이 하한가 %s 를 씁니다", low)
+        return str(int(low))
+
     expected = _last_close()
     for attempt in range(1, args.price_attempts + 1):
         data = broker._call_once(QUOTE_API, INFO_PATH, {"stk_cd": MAIN_CODE})
