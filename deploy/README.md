@@ -235,73 +235,21 @@ tail -f logs/swing.log
 INSERT INTO command (target, action, issued_by) VALUES ('engine-swing', 'halt_entry', 'manual');
 ```
 
-## 장중 실측 실험 (일회용)
+## 장중 실측 (2026-09-01~03, 끝남)
 
-**장중에만 잴 수 있는 것들**을 예약 실행으로 잰다. 사람이 못 앉아 있어도
-Phase 8 의 미지수를 한 번에 닫는다. 모의투자 계좌이고 예산은 250만원 안팎이다.
+사흘간 모의투자로 장중에만 잴 수 있는 것을 쟀다. **도구와 유닛은 지웠다.**
+결과는 `docs/INTERFACES.md` 2.4 와 `context-notes.md` 2026-09-01~09-03 에 있다.
 
-| 재는 것 | 왜 |
-|---|---|
-| **슬리피지** | `limits.yaml` 의 `0.001` 은 실측 없이 잡은 값인데 **백테스트 결과가 통째로 여기 걸려 있다** |
-| **15:30 취소** | 취소도 주문 API 라 장종료로 막힐 수 있다. 막히면 엔진 시간표를 다시 짜야 한다 |
-| **취소된 주문의 행방** | 어느 목록에도 없으면 재시작 복구가 미체결을 못 찾는다 |
+잰 것 — 슬리피지, 15:30 취소 가능 여부, 취소된 주문의 행방, 주문번호 필드,
+매도 경로, 수수료·세금, 부분체결 수량 판정, 미체결 `ord_stt`.
 
-**개장 직후 시장가로 잰다.** 동시호가로 재려 했으나 모의투자가 장시작전
-주문을 받지 않는다 (`RC4057`, 2026-09-01 실측). 백테스트가 '다음 날 시가
-체결' 을 가정하므로, 개장 직후 체결가가 시가에서 얼마나 벌어지는지가 곧
-실전에서 감수할 슬리피지다. **09:00 과 09:02 두 번 내서 표본을 둘로 둔다** —
-개장 직후는 값이 크게 흔들려 한 번으로는 모른다.
+**엔진 시간표 두 값이 이 실측으로 바뀌었다** (`config/engine.yaml`).
+09:00 제출(동시호가 불가), 15:10 취소(15:30 이후 불가).
 
-주문번호(`ord_no`)·매도 경로·수수료·세금·부분체결 수량 판정은 2026-09-01 에
-닫혔다. 다시 재지 않는다 (`INTERFACES.md` 2.4).
-
-시각표는 `_plan()` 에 있다. 08:55 잔고 → 09:00·09:02 시장가 → 09:04 시가
-대조 → 09:06 하한가 지정가 → 09:15 취소 → 09:20 행방 확인 →
-15:25~16:13 마감 취소 실험 순이다.
-
-```bash
-sudo cp deploy/stock-portal-testorder.service deploy/stock-portal-testorder.timer /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now stock-portal-testorder.timer
-systemctl list-timers stock-portal-testorder.timer
-```
-
-`.timer` 에 **날짜가 박혀 있다.** 다른 날 돌리려면 `OnCalendar` 을 고친다.
-08:25 에 시작해 16:12 까지 시각표대로 돈다.
-
-돌고 나면 응답 원문이 전부 남는다. 이 파일을 통째로 붙여주면 파서를 고치고
-테스트에 샘플로 고정한다.
-
-```bash
-cat ~/stock-portal/logs/testorder.json
-```
-
-진행 상황은 로그로 본다.
-
-```bash
-tail -f ~/stock-portal/logs/testorder.log
-```
-
-### 안전장치
-
-- `logs/testorder.done` 이 있으면 **다시 돌지 않는다.** 타이머가 두 번
-  발화해도 주문은 한 번만 나간다
-- **단계마다 저장한다.** 중간에 죽어도 그때까지의 실측이 남는다
-- 한 단계가 실패해도 다음으로 넘어간다. 조회 하나 때문에 취소를 못 하면
-  주문이 장 마감까지 남는다
-- **장중에는 하한가를 그대로 쓴다.** 세션이 넘어가 `lst_pric` 이 오늘 값이다.
-  장 전에 낼 때만 기준가가 넘어갔는지 대조한다.
-  2026-09-01·09-02 에 이 대조가 장중에도 돌아 하한가 주문이 두 번 건너뛰어졌다 —
-  KRX 가 D일 데이터를 D+1 에 공개해 아침의 최신 일봉은 늘 '그저께' 라
-  기준가와 영원히 어긋난다
-- **응답을 못 받으면 그 주문은 거기서 끝낸다.** 접수 여부를 모르는 상태에서
-  다시 걸면 중복 주문이다 (CLAUDE.md 3). 거부도 다시 내지 않는다
-
-### 끝나면 지운다
-
-실측이 끝나면 유닛과 `common/broker/testorder.py` 를 함께 지운다. 일회용이다.
+서버에 유닛이 남아 있으면 지운다.
 
 ```bash
 sudo systemctl disable --now stock-portal-testorder.timer
-sudo rm /etc/systemd/system/stock-portal-testorder.{service,timer}
+sudo rm -f /etc/systemd/system/stock-portal-testorder.{service,timer}
+sudo systemctl daemon-reload
 ```
