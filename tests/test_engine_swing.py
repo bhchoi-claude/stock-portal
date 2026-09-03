@@ -318,6 +318,11 @@ def paper(engine_conn):
 
 def test_잔고_불일치는_진입만_막는다(engine_conn, paper, stocks):
     """청산은 계속 돈다. 손절이 원장 불일치로 묶이면 그쪽이 더 위험하다."""
+    # 진짜 엔진이 같은 계좌에 포지션을 넣어둔다. 비우고 시작한다
+    with engine_conn.cursor() as cur:
+        cur.execute("DELETE FROM position WHERE account_id = %s", (ACCOUNT,))
+    engine_conn.commit()
+
     broker = MockBroker(
         balance=balance(),
         positions=[Position(ACCOUNT, stocks[0], 10, Decimal(1000))],
@@ -742,8 +747,9 @@ def test_같은_날_계획을_두_번_만들지_않는다(engine_conn, paper, st
     `done` 은 프로세스 메모리라 재시작에 살아남지 못한다. 같은 종목의
     신호가 둘이 되면 다음 날 아침에 주문이 두 번 나간다.
     """
+    # `created_at` 은 DB 의 NOW() 다. 고정 시계를 쓰면 날짜가 어긋난다
     strategy = StubStrategy(entries=[EntryIntent(stocks[0], Side.BUY, Decimal(3))])
-    engine = build(conn=engine_conn, strategy=strategy)
+    engine = build(conn=engine_conn, strategy=strategy, now=datetime.now(UTC))
     now = engine.now()
 
     assert engine._planned_today(now) is False
@@ -763,6 +769,6 @@ def test_어제_계획은_오늘을_막지_않는다(engine_conn, paper, stocks)
         )
     engine_conn.commit()
 
-    engine = build(conn=engine_conn)
+    engine = build(conn=engine_conn, now=datetime.now(UTC))
 
     assert engine._planned_today(engine.now()) is False
