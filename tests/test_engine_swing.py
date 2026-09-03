@@ -6,13 +6,22 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from common.broker.base import OrderResult
 from common.broker.mock import MockBroker
 from common.db.filters import add_filter
-from common.db.orders import list_open_orders
+from common.db.orders import apply_result, list_open_orders, record_pending
 from common.db.signals import pending_signals, record_signal
 from common.risk import RiskManager
 from common.strategy.base import Context, EntryIntent, ExitIntent, Strategy
-from common.types import Balance, Position, Quote, Regime, Side, Signal
+from common.types import (
+    Balance,
+    OrderType,
+    Position,
+    Quote,
+    Regime,
+    Side,
+    Signal,
+)
 from engines.swing.engine import SwingEngine, _hhmm
 
 SEOUL = ZoneInfo("Asia/Seoul")
@@ -566,3 +575,128 @@ def test_제외_목록은_청산을_막지_않는다(engine_conn, paper, stocks)
     assert (
         engine._plan_exits(context(engine, [position], balance()), Regime.NEUTRAL) == 1
     )
+
+
+def test_사라진_주문_때문에_기동이_죽지_않는다(engine_conn, paper, stocks):
+    """**2026-09-03 실측.** 취소된 주문은 어느 목록에도 안 남는다.
+
+    체결 목록도 당일 것만 주므로 날이 바뀌면 어제 주문을 조회할 수 없다.
+    둘 다 `get_order_status` 가 `PermanentError` 를 던진다.
+
+    `recover()` 는 `run()` 의 예외 처리 밖이라, 여기서 예외가 올라가면
+    **엔진이 시작하자마자 죽고** systemd 가 다섯 번 뒤 포기한다.
+    """
+    with engine_conn.cursor() as cur:
+        record_pending(
+            cur,
+            client_order_id="TEST-VANISHED",
+            account_id=ACCOUNT,
+            stock_id=stocks[0],
+            side=Side.BUY,
+            order_type=OrderType.MARKET,
+            quantity=1,
+        )
+        apply_result(
+            cur,
+            OrderResult(
+                client_order_id="TEST-VANISHED",
+                broker_order_no="0013842",
+                status="submitted",
+                filled_qty=0,
+                avg_fill_price=None,
+            ),
+        )
+    engine_conn.commit()
+
+    # 목은 이 주문번호를 모른다. 실제 키움과 같은 예외를 던진다
+    engine = build(conn=engine_conn, broker=MockBroker(balance=balance(), positions=[]))
+    engine.recover()
+
+    with engine_conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, error_message FROM order_request"
+            " WHERE client_order_id = 'TEST-VANISHED'"
+        )
+        status, message = cur.fetchone()
+    engine_conn.rollback()
+
+    assert status == "cancelled"  # 다시 대조하지 않도록 닫는다
+    assert "사라졌다" in message
+
+
+def test_사라진_주문은_진입을_막지_않는다(engine_conn, paper, stocks):
+    """주문 행 하나 때문에 엔진을 못 띄우면 안 된다.
+
+    보유 수량은 브로커 잔고가 정본이라 `_sync_positions` 가 바로 뒤에
+    맞추고, 어긋나면 그때 진입을 막는다.
+    """
+    with engine_conn.cursor() as cur:
+        cur.execute("DELETE FROM position WHERE account_id = %s", (ACCOUNT,))
+        record_pending(
+            cur,
+            client_order_id="TEST-VANISHED-2",
+            account_id=ACCOUNT,
+            stock_id=stocks[0],
+            side=Side.BUY,
+            order_type=OrderType.MARKET,
+            quantity=1,
+        )
+        apply_result(
+            cur,
+            OrderResult(
+                client_order_id="TEST-VANISHED-2",
+                broker_order_no="0099999",
+                status="submitted",
+                filled_qty=0,
+                avg_fill_price=None,
+            ),
+        )
+    engine_conn.commit()
+
+    engine = build(conn=engine_conn, broker=MockBroker(balance=balance(), positions=[]))
+    engine.recover()
+
+    assert engine.halt_entry is False
+
+
+def test_체결량은_사라져도_줄지_않는다(engine_conn, paper, stocks):
+    """부분체결된 주문이 사라져도 체결 기록을 잃으면 안 된다.
+
+    `apply_result` 의 GREATEST 가 막는다.
+    """
+    with engine_conn.cursor() as cur:
+        record_pending(
+            cur,
+            client_order_id="TEST-VANISHED-3",
+            account_id=ACCOUNT,
+            stock_id=stocks[0],
+            side=Side.BUY,
+            order_type=OrderType.MARKET,
+            quantity=10,
+        )
+        apply_result(
+            cur,
+            OrderResult(
+                client_order_id="TEST-VANISHED-3",
+                broker_order_no="0088888",
+                status="partial",
+                filled_qty=4,
+                avg_fill_price=Decimal(1000),
+            ),
+        )
+    engine_conn.commit()
+
+    engine = build(conn=engine_conn, broker=MockBroker(balance=balance(), positions=[]))
+    engine.recover()
+
+    with engine_conn.cursor() as cur:
+        cur.execute(
+            "SELECT status, filled_qty, avg_fill_price FROM order_request"
+            " WHERE client_order_id = 'TEST-VANISHED-3'"
+        )
+        status, filled, price = cur.fetchone()
+    engine_conn.rollback()
+
+    assert status == "cancelled"
+    assert filled == 4  # 줄지 않는다
+    assert price == Decimal(1000)  # 체결가도 지킨다

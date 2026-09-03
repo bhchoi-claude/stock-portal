@@ -507,7 +507,12 @@ class SwingEngine:
             if order.broker_order_no is None:
                 unknown.append(order.client_order_id)
                 continue
-            self._apply(self._status_of(order))
+            try:
+                self._apply(self._status_of(order))
+            except BrokerError as exc:
+                # 증권사가 모르는 주문이다. **여기서 예외가 올라가면 엔진이
+                # 기동조차 못 한다** — recover() 는 run() 의 예외 처리 밖이다
+                self._close_vanished(order, exc)
 
         if unknown:
             self.halt_entry = True
@@ -517,6 +522,45 @@ class SwingEngine:
                 f"접수 여부를 모르는 주문 {len(unknown)}건. 확인이 필요합니다",
                 detail={"client_order_ids": unknown},
             )
+
+    def _close_vanished(self, order: OpenOrder, exc: BrokerError) -> None:
+        """증권사 목록에서 사라진 주문을 닫는다.
+
+        **취소된 주문은 어느 목록에도 안 남는다** (2026-09-03 실측). 체결
+        목록(`ka10076`)도 당일 것만 주므로 **날이 바뀌면 어제 주문을 조회할
+        수 없다.** 둘 다 `get_order_status` 가 `PermanentError` 를 던진다.
+
+        닫지 않고 두면 재시작할 때마다 같은 행에서 같은 예외가 난다.
+        `recover()` 는 `run()` 의 예외 처리 밖이라 **엔진이 시작하자마자
+        죽고**, systemd 가 다섯 번 시도한 뒤 포기한다.
+
+        `cancelled` 로 닫는다. 실제로 체결됐을 가능성이 남지만 **보유 수량은
+        브로커 잔고가 정본이다** (`SCHEMA.md` 5장) — `_sync_positions` 가
+        바로 뒤에 맞추고, 어긋나면 진입을 막는다. 주문 행 하나 때문에
+        엔진을 못 띄우는 것보다 낫다.
+
+        `filled_qty` 는 줄지 않는다. `apply_result` 의 `GREATEST` 가 막는다.
+        """
+        log.warning("%s 증권사가 모르는 주문이다: %s", order.stock_id, exc)
+        self._apply(
+            OrderResult(
+                client_order_id=order.client_order_id,
+                broker_order_no=order.broker_order_no,
+                status="cancelled",
+                filled_qty=0,
+                avg_fill_price=None,
+                error_message=f"증권사 조회에서 사라졌다: {exc}",
+            )
+        )
+        self._event(
+            "WARN",
+            f"{order.stock_id} 주문이 증권사 조회에서 사라져 취소로 닫았습니다",
+            detail={
+                "client_order_id": order.client_order_id,
+                "broker_order_no": order.broker_order_no,
+                "was": order.status,
+            },
+        )
 
     def _sync_positions(self, *, cold_start_ok: bool = False) -> list[Position]:
         """증권사 잔고로 DB 를 맞춘다. 어긋나면 **진입만** 막는다.
