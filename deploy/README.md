@@ -199,6 +199,20 @@ LLM 비용은 `api_usage` 에 쌓인다. 일일 상한은 `config/limits.yaml` �
 넘으면 그날은 호출하지 않고 텔레그램으로 알린다. 분석되지 않은 원문은
 표시가 비어 있어 다음 날 이어서 처리된다.
 
+## 상시 프로세스는 버퍼를 꺼야 로그가 보인다
+
+`StandardOutput=append:파일` 은 파이프가 아니라 파일이라 Python 이 블록
+버퍼로 잡는다. **24시간 도는 프로세스는 종료할 일이 없어 flush 가 안 되고,
+로그 파일이 통째로 빈다.** 배치(oneshot)는 끝날 때 flush 되므로 안 겪는다.
+
+```
+Environment=PYTHONUNBUFFERED=1
+```
+
+`stock-portal-swing.service` 와 `stock-portal-news.service` 에 넣었다.
+2026-09-03 엔진을 처음 띄웠을 때 겪었다 — 프로세스는 멀쩡히 도는데
+`tail` 이 아무것도 안 보여줬다.
+
 ## 스윙 매매 엔진
 
 24시간 상주한다. **장중에 재시작하지 않는다** — 배포는 15:40 이후다

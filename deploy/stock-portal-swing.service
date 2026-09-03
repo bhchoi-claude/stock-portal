@@ -21,6 +21,11 @@ WorkingDirectory=/home/bh-server/stock-portal
 Restart=on-failure
 RestartSec=30
 
+# **버퍼를 끈다.** StandardError=append 는 파이프가 아니라 파일이라
+# Python 이 블록 버퍼로 잡는다. 24시간 상주라 종료 시 flush 를 기대할 수 없다 —
+# 로그가 통째로 안 보인다 (2026-09-03 엔진 기동에서 겪었다)
+Environment=PYTHONUNBUFFERED=1
+
 ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m engines.swing
 
 StandardOutput=append:/home/bh-server/stock-portal/logs/swing.log
