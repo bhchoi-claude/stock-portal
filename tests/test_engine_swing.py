@@ -44,6 +44,7 @@ PARAMS = {
     "plan_retry_min": 20,
     "plan_retry_max": 6,
     "plan_max_stale_days": 5,
+    "task_window_min": 30,
     "position_tolerance": 0,
 }
 
@@ -733,3 +734,35 @@ def test_며칠_묵으면_그날을_건너뛴다(engine_conn, paper):
 
     stale = engine.params["plan_max_stale_days"] + 1
     assert engine._daily_loaded(latest + timedelta(days=stale)) is False
+
+
+def test_같은_날_계획을_두_번_만들지_않는다(engine_conn, paper, stocks):
+    """**창 안(19:00~19:30)에 재시작하면 계획이 두 번 만들어진다.**
+
+    `done` 은 프로세스 메모리라 재시작에 살아남지 못한다. 같은 종목의
+    신호가 둘이 되면 다음 날 아침에 주문이 두 번 나간다.
+    """
+    strategy = StubStrategy(entries=[EntryIntent(stocks[0], Side.BUY, Decimal(3))])
+    engine = build(conn=engine_conn, strategy=strategy)
+    now = engine.now()
+
+    assert engine._planned_today(now) is False
+
+    engine._plan_entries(context(engine, [], balance()), Regime.NEUTRAL)
+
+    # 방금 남겼으니 이제 오늘 몫은 끝났다
+    assert engine._planned_today(now) is True
+
+
+def test_어제_계획은_오늘을_막지_않는다(engine_conn, paper, stocks):
+    with engine_conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO signal (stock_id, strategy, side, created_at)"
+            " VALUES (%s, %s, 'BUY', NOW() - INTERVAL '1 day')",
+            (stocks[0], STRATEGY),
+        )
+    engine_conn.commit()
+
+    engine = build(conn=engine_conn)
+
+    assert engine._planned_today(engine.now()) is False

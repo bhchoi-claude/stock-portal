@@ -132,3 +132,14 @@ def open_signals(cur: psycopg.Cursor, strategy: str, limit: int) -> list[SignalV
         (strategy, limit),
     )
     return [SignalView(*row) for row in cur.fetchall()]
+
+
+def last_planned_at(cur: psycopg.Cursor, strategy: str) -> datetime | None:
+    """마지막으로 계획을 남긴 시각. 없으면 `None`.
+
+    소비 여부를 보지 않는다. **'오늘 계획을 만들었는가' 를 묻는 것**이지
+    '아직 안 낸 계획이 있는가' 를 묻는 것이 아니다.
+    """
+    cur.execute("SELECT MAX(created_at) FROM signal WHERE strategy = %s", (strategy,))
+    row = cur.fetchone()
+    return row[0] if row else None

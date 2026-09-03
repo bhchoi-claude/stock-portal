@@ -21,7 +21,12 @@ from common.db.orders import OpenOrder, apply_result, list_open_orders
 from common.db.pnl import snapshot
 from common.db.positions import list_positions, sync_positions
 from common.db.prices import traded_range
-from common.db.signals import consume, pending_signals, record_signal
+from common.db.signals import (
+    consume,
+    last_planned_at,
+    pending_signals,
+    record_signal,
+)
 from common.feed.live import SEOUL, LiveFeed
 from common.order import place_order
 from common.risk import RiskManager
@@ -135,7 +140,13 @@ class SwingEngine:
         if self.stopping:
             return
 
-        for task in due_tasks(now, self.table, self.done, self.retry_at):
+        for task in due_tasks(
+            now,
+            self.table,
+            self.done,
+            self.retry_at,
+            window_min=self.params["task_window_min"],
+        ):
             getattr(self, f"_{task}")(now)
 
         self._track_fills(now)
@@ -221,6 +232,13 @@ class SwingEngine:
         목록을 줄 뿐이라 '후보 없음' 과 구분되지 않는다. heartbeat 로는 알
         수 없다 — 프로세스가 돌았다는 뜻이지 데이터가 들어왔다는 뜻이 아니다.
         """
+        if self._planned_today(now):
+            # 창 안(19:00~19:30)에 재시작하면 계획이 두 번 만들어진다.
+            # `done` 은 프로세스 메모리라 재시작에 살아남지 못한다
+            log.info("오늘 계획을 이미 남겼습니다")
+            self.done["plan"] = now.date()
+            return
+
         if not self._daily_loaded(now.date()):
             self._defer_plan(now)
             return
@@ -310,6 +328,18 @@ class SwingEngine:
                 )
             count += 1
         return count
+
+    def _planned_today(self, now: datetime) -> bool:
+        """오늘 이미 계획을 남겼는가. **DB 로 본다.**
+
+        `done` 은 프로세스 메모리에만 있어 재시작하면 비고, 그러면 같은 날
+        계획이 두 번 만들어진다. 같은 종목의 신호가 둘이 되면 다음 날 아침에
+        주문이 두 번 나간다.
+        """
+        with self.conn.cursor() as cur:
+            last = last_planned_at(cur, self.strategy.name)
+        self.conn.rollback()
+        return last is not None and last.astimezone(SEOUL).date() == now.date()
 
     def _defer_plan(self, now: datetime) -> None:
         """일봉이 아직 없다. 몇 번까지 기다린 뒤 그날을 건너뛴다.

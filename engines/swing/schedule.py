@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 # 시간 순서대로 둔다. 같은 틱에 둘 이상이 걸리면 이 순서로 실행된다
 TASKS: tuple[str, ...] = ("submit", "cancel", "snapshot", "plan")
@@ -27,6 +27,7 @@ def due_tasks(
     table: Timetable,
     done: dict[str, date],
     retry_at: dict[str, datetime] | None = None,
+    window_min: int = 30,
 ) -> list[str]:
     """지금 실행해야 할 일. **시각이 지났고 오늘 아직 안 한 것**이다.
 
@@ -38,9 +39,20 @@ def due_tasks(
     `now` 는 **한국 시각**이어야 한다. 거래일이 시장 현지 기준이고
     시간표도 KST 로 적혀 있다 (CLAUDE.md 5).
 
+    **창을 벗어난 일은 건너뛴다.** `done` 은 프로세스 메모리에만 있어
+    재시작하면 비는데, 창이 없으면 21:03 에 올라온 엔진이 09:00 제출을
+    그때 해버린다. 2026-09-03 첫 기동에서 실제로 그랬다 — 계획 두 건이
+    장종료로 거부되며 소진됐다.
+
+    창이 곧 위 문장의 구현이다. 15:00 에 올라오면 제출 창(09:00~09:30)이
+    이미 지나 건너뛰고, 취소 창은 아직이라 15:10 에 한다.
+
     `retry_at` 에 있는 일은 그 시각 전까지 걸리지 않는다. 19:00 에 일봉이
     아직 안 쌓였을 때 20분 뒤 다시 보게 하는 자리다. 다시 볼 일을
     `done` 에 넣으면 그날이 끝나버려 쓸 수 없다.
+
+    **다시 보기로 한 일에는 창을 적용하지 않는다.** 일봉을 두 시간까지
+    기다리는데 30분 창으로 자르면 그 기다림이 무의미해진다.
 
     **토·일에는 아무것도 하지 않는다.** 공휴일은 달력으로 거르지 않는다 —
     `exchange_holiday` 는 일봉에서 역산해 채우므로 앞으로의 휴일을 모른다.
@@ -50,12 +62,26 @@ def due_tasks(
     if now.weekday() >= 5:
         return []
 
-    today = now.date()
     waits = retry_at or {}
     return [
-        task
-        for task in TASKS
-        if done.get(task) != today
-        and now.time() >= table.at(task)
-        and (task not in waits or now >= waits[task])
+        task for task in TASKS if _is_due(now, table, done, waits, task, window_min)
     ]
+
+
+def _is_due(
+    now: datetime,
+    table: Timetable,
+    done: dict[str, date],
+    waits: dict[str, datetime],
+    task: str,
+    window_min: int,
+) -> bool:
+    if done.get(task) == now.date():
+        return False
+
+    if task in waits:
+        # 다시 보기로 한 것이다. 창을 다시 재지 않는다
+        return now >= waits[task]
+
+    opens = datetime.combine(now.date(), table.at(task), tzinfo=now.tzinfo)
+    return opens <= now < opens + timedelta(minutes=window_min)
