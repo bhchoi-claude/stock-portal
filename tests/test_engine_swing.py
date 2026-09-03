@@ -43,6 +43,7 @@ PARAMS = {
     "fill_poll_sec": 60,
     "plan_retry_min": 20,
     "plan_retry_max": 6,
+    "plan_max_stale_days": 5,
     "position_tolerance": 0,
 }
 

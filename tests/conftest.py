@@ -107,6 +107,10 @@ def engine_conn():
             " FROM position WHERE account_id = 'paper'"
         )
         saved = c.fetchall()
+        # **시작할 때도 지운다.** 뒷정리만 하면 앞선 실행이 중간에 죽었을 때
+        # 남은 행이 누적된다. 2026-09-03 에 어제 남은 제외 목록 때문에
+        # '계획을 남긴다' 가 0건이 됐다
+        _clear_test_rows(c)
     conn.commit()
 
     try:
@@ -124,14 +128,7 @@ def engine_conn():
                 " WHERE order_id > %s AND account_id = 'paper'",
                 (watermark,),
             )
-            c.execute("DELETE FROM signal WHERE strategy = 'swing-test'")
-            c.execute("DELETE FROM command WHERE target = 'engine-swing-test'")
-            c.execute("DELETE FROM heartbeat WHERE process_name = 'engine-swing-test'")
-            c.execute("DELETE FROM event_log WHERE process_name = 'engine-swing-test'")
-            c.execute(
-                "DELETE FROM daily_pnl"
-                " WHERE account_id = 'paper' AND trade_date < DATE '2000-01-01'"
-            )
+            _clear_test_rows(c)
             c.execute("DELETE FROM position WHERE account_id = 'paper'")
             c.executemany(
                 "INSERT INTO position (account_id, stock_id, quantity, avg_price,"
@@ -141,3 +138,20 @@ def engine_conn():
             )
         conn.commit()
         conn.close()
+
+
+def _clear_test_rows(cur) -> None:
+    """테스트 전용 이름이 붙은 행을 지운다. 시작과 끝에 모두 부른다.
+
+    **제외 목록을 빠뜨리면 안 된다.** 앞선 실행이 막아둔 종목이 살아남아
+    다음 실행의 계획을 0건으로 만든다 (2026-09-03 서버에서 잡혔다).
+    """
+    cur.execute("DELETE FROM signal WHERE strategy = 'swing-test'")
+    cur.execute("DELETE FROM stock_filter WHERE strategy = 'swing-test'")
+    cur.execute("DELETE FROM command WHERE target = 'engine-swing-test'")
+    cur.execute("DELETE FROM heartbeat WHERE process_name = 'engine-swing-test'")
+    cur.execute("DELETE FROM event_log WHERE process_name = 'engine-swing-test'")
+    cur.execute(
+        "DELETE FROM daily_pnl"
+        " WHERE account_id = 'paper' AND trade_date < DATE '2000-01-01'"
+    )

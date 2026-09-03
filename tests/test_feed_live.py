@@ -207,18 +207,24 @@ def test_두_피드가_같은_유니버스를_준다(read_conn):
     assert expected
 
 
-def test_일봉이_없는_날은_유니버스가_빈다(read_conn):
-    """`universe_at` 이 그날 거래된 종목을 요구한다. 19:00 적재 전에는 빈다.
+def test_시각이_앞서가도_유니버스가_비지_않는다(read_conn):
+    """**커서가 시계가 아니라 데이터를 따라간다** (2026-09-03 에 바꿨다).
 
-    예외를 던지지 않는다 — `BacktestFeed` 와 달라지면 그것이 갈라짐이다.
-    일봉이 쌓였는지는 엔진이 `price_daily` 를 직접 보고 판단한다 (4단계).
+    예전에는 `now()` 의 한국 날짜를 커서로 썼다. `universe_at` 이 그날 거래된
+    종목을 요구하므로, **KRX 가 D일 데이터를 D+1 에 공개하는 한 늘 빈 목록**
+    이었다. 엔진의 진입 후보가 영영 0 이 된다.
+
+    이제 최신 거래일을 커서로 쓰므로 시각이 얼마나 앞서 있든 그날의
+    유니버스가 나온다. 데이터가 너무 묵었는지는 엔진이 `_daily_loaded` 로
+    따로 본다 (`plan_max_stale_days`).
     """
     day = _latest_day(read_conn)
-    # 마지막 거래일보다 뒤. 아직 아무것도 안 쌓인 날이다
     moment = datetime.combine(day, CLOSE, tzinfo=SEOUL).astimezone(UTC)
     ahead = moment.replace(year=moment.year + 1)
+    feed = _feed(read_conn, moment=ahead)
 
-    assert _feed(read_conn, moment=ahead).get_universe() == []
+    assert feed.trade_date() == day
+    assert feed.get_universe()  # 비지 않는다
 
 
 def test_autocommit_이_아니면_거부한다():

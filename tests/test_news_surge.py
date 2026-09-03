@@ -14,6 +14,12 @@ from common.db.keywords import (
 
 TODAY = date(2026, 8, 30)
 
+# 정렬 테스트 전용. 실제 집계가 없는 날이라 우리 키워드만 줄에 선다.
+# 실제 데이터가 있는 날을 쓰면 상위 10 이 진짜 급등어로 채워져 밀린다.
+# 기준선도 이 날의 직전 이틀이어야 ma7 에 잡힌다
+QUIET = date(1999, 1, 4)
+QUIET_BEFORE = (date(1999, 1, 2), date(1999, 1, 3))
+
 
 def test_days_default_span():
     assert days_to_rebuild([], TODAY, 3) == [
@@ -117,14 +123,14 @@ def test_화면은_절대_빈도가_아니라_급등도로_줄_세운다(cur):
     """
     common = _keyword(cur, "흔한말")
     rare = _keyword(cur, "드문말")
-    for day in (date(2026, 8, 23), date(2026, 8, 24)):
+    for day in QUIET_BEFORE:
         _daily(cur, common, day, 40)
         _daily(cur, rare, day, 1)
-    _daily(cur, common, TODAY, 39)  # 평소만큼
-    _daily(cur, rare, TODAY, 9)  # 평소의 몇 배
-    refresh_surge(cur, TODAY)
+    _daily(cur, common, QUIET, 39)  # 평소만큼
+    _daily(cur, rare, QUIET, 9)  # 평소의 몇 배
+    refresh_surge(cur, QUIET)
 
-    terms = [row.term for row in daily_ranked(cur, TODAY, 10)]
+    terms = [row.term for row in daily_ranked(cur, QUIET, 10)]
 
     # 건수는 흔한말이 네 배 많지만 위에 오는 것은 드문말이다
     assert terms.index("드문말") < terms.index("흔한말")
@@ -137,13 +143,13 @@ def test_처음_나온_말은_건수를_배수_자리에_쓴다(cur):
     """
     fresh = _keyword(cur, "오늘처음본말")
     quiet = _keyword(cur, "밋밋한말")
-    for day in (date(2026, 8, 23), date(2026, 8, 24)):
+    for day in QUIET_BEFORE:
         _daily(cur, quiet, day, 10)
-    _daily(cur, fresh, TODAY, 10)  # 배수 없음, 건수 10
-    _daily(cur, quiet, TODAY, 12)  # 배수 약 1.2
-    refresh_surge(cur, TODAY)
+    _daily(cur, fresh, QUIET, 10)  # 배수 없음, 건수 10
+    _daily(cur, quiet, QUIET, 12)  # 배수 약 1.2
+    refresh_surge(cur, QUIET)
 
-    terms = [row.term for row in daily_ranked(cur, TODAY, 10)]
+    terms = [row.term for row in daily_ranked(cur, QUIET, 10)]
 
     assert terms.index("오늘처음본말") < terms.index("밋밋한말")
 
@@ -152,13 +158,13 @@ def test_한_번_나온_신규는_위로_안_온다(cur):
     """건수를 배수 자리에 쓰므로 1회는 1배와 같은 취급이다."""
     once = _keyword(cur, "한번나온말")
     surging_term = _keyword(cur, "튀어오른말")
-    for day in (date(2026, 8, 23), date(2026, 8, 24)):
+    for day in QUIET_BEFORE:
         _daily(cur, surging_term, day, 1)
-    _daily(cur, once, TODAY, 1)
-    _daily(cur, surging_term, TODAY, 8)
-    refresh_surge(cur, TODAY)
+    _daily(cur, once, QUIET, 1)
+    _daily(cur, surging_term, QUIET, 8)
+    refresh_surge(cur, QUIET)
 
-    terms = [row.term for row in daily_ranked(cur, TODAY, 10)]
+    terms = [row.term for row in daily_ranked(cur, QUIET, 10)]
 
     assert terms.index("튀어오른말") < terms.index("한번나온말")
 
