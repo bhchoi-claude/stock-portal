@@ -1,6 +1,6 @@
 # LiveFeed. 백테스트와 같은 값을 주는지가 이 파일의 핵심이다
 
-from datetime import UTC, datetime, time
+from datetime import UTC, date, datetime, time
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -21,9 +21,34 @@ STOCK = "KRX:005930"
 
 
 class _FakeConn:
-    """쿼리하지 않는 테스트용. LiveFeed 는 autocommit 커넥션만 받는다."""
+    """커서일 조회만 답하는 테스트용. LiveFeed 는 autocommit 커넥션만 받는다."""
 
     autocommit = True
+
+    def __init__(self, latest=None) -> None:
+        self.latest = latest
+        self.queries = 0
+
+    def cursor(self):
+        return _FakeCursor(self)
+
+
+class _FakeCursor:
+    def __init__(self, conn: _FakeConn) -> None:
+        self.conn = conn
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+    def execute(self, sql, params=None):
+        self.conn.queries += 1
+
+    def fetchone(self):
+        # traded_range 는 (MIN, MAX) 를 받는다
+        return (self.conn.latest, self.conn.latest)
 
 
 def _feed(conn, broker=None, moment=None) -> LiveFeed:
@@ -47,21 +72,57 @@ def test_now_는_utc_다():
     assert _feed(_FakeConn()).now().tzinfo is UTC
 
 
-def test_커서일은_한국_날짜다():
-    """거래일은 시장 현지 기준으로 저장한다 (CLAUDE.md 5).
+def test_커서일은_오늘이_아니라_최신_거래일이다():
+    """**KRX 는 D일 데이터를 D+1 에 공개한다.**
 
-    UTC 날짜로 읽으면 오전 09:00 이전 한국 시각이 전날로 밀린다.
+    19:00 수집기가 채우는 것은 어제 것이라, 오늘을 커서로 쓰면
+    `universe_at` 이 늘 빈 목록을 준다. 2026-09-03 19:00 수집 뒤에도
+    최신 일봉은 09-02 였다.
+    """
+    moment = datetime(2026, 9, 3, 10, 0, tzinfo=UTC)  # 09-03 19:00 KST
+    feed = _feed(_FakeConn(latest=date(2026, 9, 2)), moment=moment)
+
+    assert feed.trade_date() == date(2026, 9, 2)
+
+
+def test_일봉이_없으면_오늘_한국_날짜를_준다():
+    """유니버스가 비고 엔진이 판단을 건너뛴다. `BacktestFeed` 와 같은 동작이다.
+
+    거래일은 시장 현지 기준이다 (CLAUDE.md 5). UTC 날짜로 읽으면 오전
+    09:00 이전 한국 시각이 전날로 밀린다.
     """
     # 2026-09-01 08:30 KST = 2026-08-31 23:30 UTC
     moment = datetime(2026, 8, 31, 23, 30, tzinfo=UTC)
-    feed = _feed(_FakeConn(), moment=moment)
+    feed = _feed(_FakeConn(latest=None), moment=moment)
 
     assert feed.trade_date().isoformat() == "2026-09-01"
 
 
-def test_자정_직전도_같은_거래일이다():
-    moment = datetime(2026, 9, 1, 14, 59, tzinfo=UTC)  # 23:59 KST
-    assert _feed(_FakeConn(), moment=moment).trade_date().isoformat() == "2026-09-01"
+def test_커서일을_종목마다_다시_읽지_않는다():
+    """한 번 스캔에 200종목을 돈다. 종목마다 부르면 220만 행을 200번 훑는다."""
+    conn = _FakeConn(latest=date(2026, 9, 2))
+    feed = _feed(conn, moment=datetime(2026, 9, 3, 10, 0, tzinfo=UTC))
+
+    for _ in range(50):
+        feed.trade_date()
+
+    assert conn.queries == 1
+
+
+def test_시간이_지나면_커서일을_다시_읽는다():
+    """09:00 제출 때 잡은 값이 19:00 판단 때는 낡는다.
+
+    그 사이 19:00 수집기가 새 거래일을 넣기 때문이다.
+    """
+    conn = _FakeConn(latest=date(2026, 9, 2))
+    feed = _feed(conn, moment=datetime(2026, 9, 3, 0, 0, tzinfo=UTC))
+    assert feed.trade_date() == date(2026, 9, 2)
+
+    conn.latest = date(2026, 9, 3)
+    feed.now = lambda: datetime(2026, 9, 3, 10, 0, tzinfo=UTC)
+
+    assert feed.trade_date() == date(2026, 9, 3)
+    assert conn.queries == 2
 
 
 # ---- 봉 ----

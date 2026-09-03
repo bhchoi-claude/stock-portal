@@ -653,15 +653,25 @@ class SwingEngine:
         return datetime.combine(spanned[1], self.table.plan, tzinfo=SEOUL)
 
     def _daily_loaded(self, day: date) -> bool:
-        """그날 일봉이 `price_daily` 에 들어왔는지 **직접 본다.**
+        """일봉이 **너무 묵지 않았는지** 직접 본다.
 
         heartbeat 를 보지 않는다. 프로세스가 돌았다는 뜻이지 데이터가
         들어왔다는 뜻이 아니다.
+
+        **'오늘 일봉이 있는가' 를 물으면 안 된다.** KRX 는 D일 데이터를
+        D+1 에 공개하므로 19:00 수집기가 채우는 것은 어제 것이다. 오늘을
+        요구하면 매일 판단을 건너뛴다 (2026-09-03 에 확인했다).
+
+        묵은 정도로 본다. 정상은 하루(월요일이면 금요일 종가라 사흘)다.
+        수집기가 며칠 멈춰 있으면 그때는 건너뛰는 것이 맞다 — 오래된
+        데이터로 판단하는 것보다 낫다.
         """
         with self.conn.cursor() as cur:
             spanned = traded_range(cur)
         self.conn.rollback()
-        return spanned is not None and spanned[1] == day
+        if spanned is None:
+            return False
+        return (day - spanned[1]).days <= self.params["plan_max_stale_days"]
 
     def _blocked(self, day: date) -> set[str]:
         """오늘 사면 안 되는 종목 (`stock_filter`).

@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 import psycopg
 
 from ..broker.base import Broker
-from ..db.prices import candles_until, universe_at
+from ..db.prices import candles_until, traded_range, universe_at
 from ..db.regime import regime_history
 from ..types import Candle, Quote, Regime, Signal
 from .base import DataFeed
@@ -16,6 +16,13 @@ from .base import DataFeed
 SEOUL = ZoneInfo("Asia/Seoul")
 
 DAILY = "1d"
+
+# 커서일을 다시 읽는 간격(초). 한 번 스캔에 200종목을 도는데 종목마다
+# MAX(trade_date) 를 부르면 220만 행을 200번 훑는다 (인덱스가 없다).
+#
+# 하루 한 번 캐시하면 안 된다. 09:00 제출 때 잡은 값이 19:00 판단 때는
+# 낡는다 — 그 사이 19:00 수집기가 새 거래일을 넣기 때문이다
+CURSOR_TTL_SEC = 60
 
 
 class LiveFeed(DataFeed):
@@ -63,6 +70,8 @@ class LiveFeed(DataFeed):
         self.close_time = close_time
         self.universe_size = universe_size
         self.liquidity_days = liquidity_days
+        self._cursor: date | None = None
+        self._cursor_at: datetime | None = None
 
     def now(self) -> datetime:
         """실제 시각(UTC).
@@ -132,12 +141,34 @@ class LiveFeed(DataFeed):
         return []
 
     def trade_date(self) -> date:
-        """DB 조회의 기준일. `now()` 의 **한국 날짜**다.
+        """DB 조회의 기준일. **일봉이 있는 가장 최근 거래일이다.**
 
-        거래일은 시장 현지 기준으로 저장한다 (CLAUDE.md 5). UTC 날짜로
-        읽으면 09:00 이전 한국 시각이 전날로 밀린다.
+        오늘 날짜가 아니다. **KRX 는 D일 데이터를 D+1 에 공개한다.**
+        19:00 수집기가 채우는 것은 어제 것이라, 오늘 날짜를 커서로 쓰면
+        `universe_at` 이 늘 빈 목록을 준다 (그날 거래된 종목을 요구한다).
+        2026-09-03 에 확인했다 — 그날 19:00 수집 뒤에도 최신 일봉은 09-02 였다.
+
+        **여기서 백테스트와 하루가 벌어진다.** 백테스트는 D 종가로 판단해
+        D+1 시가에 체결하는데, 실전은 D-1 종가로 판단해 D+1 시가에 체결한다.
+        데이터가 하루 늦게 오기 때문이고 지금 구조로는 좁힐 수 없다.
+        기록해두고 Phase 9 전에 푼다 (`checklist.md`).
+
+        일봉이 아예 없으면 오늘 한국 날짜를 준다. 그러면 유니버스가 비고
+        엔진이 판단을 건너뛴다 — `BacktestFeed` 와 같은 동작이다.
+        거래일은 시장 현지 기준이다 (CLAUDE.md 5).
         """
-        return self.now().astimezone(SEOUL).date()
+        now = self.now()
+        stale = (
+            self._cursor is None
+            or self._cursor_at is None
+            or (now - self._cursor_at).total_seconds() > CURSOR_TTL_SEC
+        )
+        if stale:
+            with self.conn.cursor() as cur:
+                spanned = traded_range(cur)
+            self._cursor = spanned[1] if spanned else now.astimezone(SEOUL).date()
+            self._cursor_at = now
+        return self._cursor
 
     def _at(self, day: date) -> datetime:
         """거래일을 그날 장 마감 시각(UTC)으로. `BacktestFeed._at` 과 같다."""

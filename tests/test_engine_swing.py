@@ -700,3 +700,35 @@ def test_체결량은_사라져도_줄지_않는다(engine_conn, paper, stocks):
     assert status == "cancelled"
     assert filled == 4  # 줄지 않는다
     assert price == Decimal(1000)  # 체결가도 지킨다
+
+
+def test_오늘_일봉을_요구하지_않는다(engine_conn, paper):
+    """**KRX 는 D일 데이터를 D+1 에 공개한다.**
+
+    19:00 수집기가 채우는 것은 어제 것이다. 오늘을 요구하면 엔진이 매일
+    판단을 건너뛴다 (2026-09-03 확인).
+    """
+    engine = build(conn=engine_conn)
+    with engine_conn.cursor() as cur:
+        cur.execute("SELECT MAX(trade_date) FROM price_daily")
+        latest = cur.fetchone()[0]
+    engine_conn.rollback()
+    if latest is None:
+        pytest.skip("일봉이 없습니다")
+
+    # 어제 데이터로 오늘 판단하는 것이 정상이다
+    assert engine._daily_loaded(latest + timedelta(days=1)) is True
+
+
+def test_며칠_묵으면_그날을_건너뛴다(engine_conn, paper):
+    """수집기가 멈춘 것을 잡는다. 오래된 데이터로 판단하는 것보다 낫다."""
+    engine = build(conn=engine_conn)
+    with engine_conn.cursor() as cur:
+        cur.execute("SELECT MAX(trade_date) FROM price_daily")
+        latest = cur.fetchone()[0]
+    engine_conn.rollback()
+    if latest is None:
+        pytest.skip("일봉이 없습니다")
+
+    stale = engine.params["plan_max_stale_days"] + 1
+    assert engine._daily_loaded(latest + timedelta(days=stale)) is False
