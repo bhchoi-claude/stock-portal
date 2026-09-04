@@ -246,6 +246,10 @@ def main(argv: list[str], notifier: Notifier | None = None) -> int:
             "keywords": len(material.ranked),
             "messages": material.message_count,
             "sent": sent,
+            # api_usage 의 endpoint 는 모델명이라 분석 배치와 한 행에 합산된다.
+            # 브리핑 몫만 보려면 여기서 봐야 한다
+            "input_tokens": briefing.input_tokens,
+            "output_tokens": briefing.output_tokens,
         },
     )
 
