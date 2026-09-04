@@ -174,7 +174,7 @@ def main(argv: list[str]) -> int:
         log_event(
             cur,
             PROCESS,
-            "INFO",
+            event_level(len(leftovers), analyzed),
             "원문 분석",
             category="collect",
             detail={
@@ -193,6 +193,22 @@ def main(argv: list[str]) -> int:
         f" LLM {analyzed}건 처리, {len(leftovers) - analyzed}건 남음."
     )
     return 0
+
+
+def event_level(leftovers: int, analyzed: int) -> str:
+    """이벤트 등급. **하나도 처리 못 했으면 `ERROR` 다.**
+
+    화면은 `ERROR` 와 `CRITICAL` 만 보여준다 (포털 운영·로그 탭).
+    `INFO` 로 남기면 `detail` 에 `pending: 500` 이 들어 있어도 아무도 못 본다.
+
+    2026-09-04 에 그래서 닷새를 몰랐다. `ANTHROPIC_WORKSPACE_ID` 가 유효하지
+    않아 LLM 호출이 400 으로 전부 거부되는 동안 원문 977건이 쌓였는데,
+    이벤트는 계속 `INFO` 였다.
+
+    **답이 안 온 글 몇 건은 정상이다** — 다음 주기에 다시 간다. LLM 이
+    통째로 죽은 것만 잡는다.
+    """
+    return "ERROR" if leftovers and not analyzed else "INFO"
 
 
 def workspace_header() -> dict[str, str]:

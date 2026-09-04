@@ -2,6 +2,7 @@
 
 import pytest
 
+from collectors.news.analyze import event_level
 from collectors.news.analyzer import NewsAnalyzer
 from common.db.messages import StoredMessage
 
@@ -180,3 +181,27 @@ def test_지울_때도_경계를_지킨다(gold):
 def test_조사가_붙어도_걸린다(gold):
     """오른쪽은 보지 않는다. '반도체가' 의 조사와 구분이 안 되기 때문이다."""
     assert gold.match_keywords("반도체가 올랐다")[0] == [3]
+
+
+# --- 조용한 실패를 막는다 (2026-09-04) ----------------------------------------
+
+
+def test_LLM_이_통째로_실패하면_ERROR_로_남긴다():
+    """**닷새를 몰랐다.**
+
+    `ANTHROPIC_WORKSPACE_ID` 가 유효하지 않아 LLM 호출이 400 으로 전부
+    거부됐는데, 마지막 이벤트가 결과와 무관하게 INFO 였다. 화면은
+    ERROR 만 보여주므로 `pending: 500` 이 detail 에 있어도 아무도 못 봤다.
+    원문 977건이 쌓였다.
+    """
+    assert event_level(leftovers=1, analyzed=0) == "ERROR"
+
+
+def test_일부만_처리해도_정상이다():
+    """답이 안 온 글 몇 건은 다음 주기에 다시 간다. 그것까지 ERROR 면 안 된다."""
+    assert event_level(leftovers=2, analyzed=1) == "INFO"
+
+
+def test_LLM_이_볼_것이_없으면_정상이다():
+    """사전이 다 잡으면 남는 것이 없다. 사전이 커질수록 정상 경로다."""
+    assert event_level(leftovers=0, analyzed=0) == "INFO"
