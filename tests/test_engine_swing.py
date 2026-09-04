@@ -772,3 +772,48 @@ def test_어제_계획은_오늘을_막지_않는다(engine_conn, paper, stocks)
     engine = build(conn=engine_conn, now=datetime.now(UTC))
 
     assert engine._planned_today(engine.now()) is False
+
+
+def test_체결_반영은_진입을_막지_않는다(engine_conn, paper, stocks):
+    """**2026-09-04 첫 자동매매에서 이것이 없어 사고가 났다.**
+
+    09:00 에 팔고 샀는데 `position` 을 아무도 안 고쳐서, 15:40 대조가 그 둘을
+    불일치로 잡고 진입을 막았다. 엔진이 자기 행동의 결과를 이상 징후로 읽었다.
+    """
+    with engine_conn.cursor() as cur:
+        cur.execute("DELETE FROM position WHERE account_id = %s", (ACCOUNT,))
+    engine_conn.commit()
+
+    broker = MockBroker(
+        balance=balance(), positions=[Position(ACCOUNT, stocks[0], 10, Decimal(1000))]
+    )
+    engine = build(conn=engine_conn, broker=broker)
+    engine._sync_positions(cold_start_ok=True)
+
+    # 팔렸다. 브로커에는 없고 DB 에는 10주가 남아 있다
+    broker._positions = []
+    engine._sync_positions(report=False)
+
+    assert engine.halt_entry is False
+    with engine_conn.cursor() as cur:
+        cur.execute("SELECT count(*) FROM position WHERE account_id = %s", (ACCOUNT,))
+        assert cur.fetchone()[0] == 0  # 맞추기는 한다
+    engine_conn.rollback()
+
+
+def test_매매_없이_어긋나면_진입을_막는다(engine_conn, paper, stocks):
+    """그것이 진짜 신호다. `report=False` 는 체결 직후에만 쓴다."""
+    with engine_conn.cursor() as cur:
+        cur.execute("DELETE FROM position WHERE account_id = %s", (ACCOUNT,))
+    engine_conn.commit()
+
+    broker = MockBroker(
+        balance=balance(), positions=[Position(ACCOUNT, stocks[0], 10, Decimal(1000))]
+    )
+    engine = build(conn=engine_conn, broker=broker)
+    engine._sync_positions(cold_start_ok=True)
+
+    broker._positions = [Position(ACCOUNT, stocks[0], 3, Decimal(1000))]
+    engine._sync_positions()
+
+    assert engine.halt_entry is True

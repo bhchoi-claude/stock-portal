@@ -447,10 +447,20 @@ class SwingEngine:
             return
         self._last_track = now
 
+        filled = False
         for order in self._open_orders():
             if order.broker_order_no is None:
                 continue
-            self._apply(self._status_of(order))
+            result = self._status_of(order)
+            self._apply(result)
+            if result.status != order.status and result.filled_qty > 0:
+                filled = True
+
+        if filled:
+            # **체결됐으면 포지션을 바로 맞춘다.** 안 맞추면 15:40 대조에서
+            # 우리가 낸 주문의 결과가 '원장 불일치' 로 잡힌다.
+            # 보고하지 않는다 — 이 차이는 우리가 만든 것이다
+            self._sync_positions(report=False)
 
     # --- 명령 --------------------------------------------------------------
 
@@ -592,7 +602,9 @@ class SwingEngine:
             },
         )
 
-    def _sync_positions(self, *, cold_start_ok: bool = False) -> list[Position]:
+    def _sync_positions(
+        self, *, cold_start_ok: bool = False, report: bool = True
+    ) -> list[Position]:
         """증권사 잔고로 DB 를 맞춘다. 어긋나면 **진입만** 막는다.
 
         청산은 막지 않는다. 손절해야 할 종목이 원장 불일치로 묶이면 그쪽이
@@ -600,6 +612,16 @@ class SwingEngine:
 
         `cold_start_ok` 는 시작 시 캐시가 비어 있는 경우다. **빈 캐시는
         '어긋났다' 가 아니라 '모른다' 이므로** 진입을 막지 않는다.
+
+        `report=False` 는 **우리가 낸 주문이 방금 체결됐을 때**다. 그 차이는
+        원장이 어긋난 것이 아니라 우리가 만든 것이다. 맞추기만 하고 넘어간다.
+
+        2026-09-04 첫 자동매매에서 이것이 없어 사고가 났다. 09:00 에 삼성전자를
+        팔고 138040 을 샀는데, `position` 을 아무도 안 고쳐서 15:40 대조가
+        그 둘을 불일치로 잡고 진입을 막았다. **엔진이 자기 행동의 결과를
+        이상 징후로 읽었다.** 그래서 19:00 계획이 0건이 됐다.
+
+        **매매 없이 어긋난 것이 진짜 신호다.**
         """
         positions = self.broker.get_positions(self.account_id)
         with transaction(self.conn) as cur:
@@ -612,7 +634,9 @@ class SwingEngine:
             if abs(m.db_quantity - m.broker_quantity) > tolerance
             and not (cold_start_ok and m.db_quantity == 0)
         ]
-        if real:
+        if real and not report:
+            log.info("체결 반영: %d종목", len(real))
+        elif real:
             self.halt_entry = True
             log.error("잔고 불일치 %d종목. 진입을 막습니다", len(real))
             self._event(
