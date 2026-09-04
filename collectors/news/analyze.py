@@ -212,10 +212,17 @@ def event_level(leftovers: int, analyzed: int) -> str:
 
 
 def workspace_header() -> dict[str, str]:
-    """조직 계정의 키는 어느 워크스페이스에서 쓰는지 함께 보내야 한다.
+    """워크스페이스를 명시해야 하는 키가 있어 있을 때만 붙인다.
 
-    없으면 400 `anthropic-workspace-id is required` 가 난다 (2026-08-30 실측).
-    개인 키는 이 값이 없어도 되므로 있을 때만 붙인다.
+    2026-08-30 에는 없으면 400 `anthropic-workspace-id is required` 가 났다.
+    **2026-09-04 에 뒤집혔다** — 워크스페이스에서 발급한 키는 거기 묶이므로
+    헤더가 필요 없다. 붙이면 오히려 값이 맞아야 한다.
+
+    그 사이 `Default` 라는 값이 들어가 있었고, 이름이지 ID 가 아니라
+    400 `must be a valid workspace ID` 로 **닷새간 LLM 이 통째로 죽었다.**
+    실제 ID 는 `wrkspc_...` 형태다.
+
+    값이 없으면 헤더를 안 붙인다. 그것이 기본이다.
     """
     workspace = load_env("ANTHROPIC_WORKSPACE_ID")
     return {"anthropic-workspace-id": workspace} if workspace else {}
