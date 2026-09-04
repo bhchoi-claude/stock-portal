@@ -71,7 +71,7 @@ def keywords_surge(day: date | None) -> dict[str, Any]:
     params = load_config("portal")
     day = day or datetime.now(SEOUL).date()
     with read_cursor() as cur:
-        rows = daily_ranked(cur, day, params["keywords_limit"])
+        rows = daily_ranked(cur, day, params["keywords_limit"], rules["min_count"])
     return {
         "date": day.isoformat(),
         "rows": [_keyword(row, rules) for row in rows],

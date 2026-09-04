@@ -189,3 +189,40 @@ def _row(cur, keyword_id: int, day: date):
         (keyword_id, day),
     )
     return cur.fetchone()
+
+
+def test_한_번만_나온_표현은_뒤로_미룬다(cur):
+    """`ma7` 이 1/7 이면 배수가 정확히 7.00 이 된다.
+
+    지난 주에 한 번, 오늘 한 번 나온 표현이 전부 같은 값으로 상위에 낀다
+    (2026-09-04 관측). 기준선으로는 못 가른다 — 노이즈와 진짜 새 테마의
+    `ma7` 이 똑같이 0.14 다. 가르는 것은 오늘 건수다.
+    """
+    noise = _keyword(cur, "한번노이즈")
+    real = _keyword(cur, "진짜테마")
+    _daily(cur, noise, QUIET_BEFORE[0], 1)
+    _daily(cur, real, QUIET_BEFORE[0], 1)
+    _daily(cur, noise, QUIET, 1)  # 1 / (1/7) = 7.00
+    _daily(cur, real, QUIET, 3)  # 3 / (1/7) = 21.00
+    refresh_surge(cur, QUIET)
+
+    terms = [row.term for row in daily_ranked(cur, QUIET, 10, 2)]
+
+    # 배수만 보면 둘 다 상위인데, 건수가 1인 쪽은 뒤로 간다
+    assert terms.index("진짜테마") < terms.index("한번노이즈")
+
+
+def test_건수가_넉넉하면_배수_순서를_지킨다(cur):
+    """하한을 넘긴 것끼리는 배수가 정렬을 정한다."""
+    low = _keyword(cur, "낮은배수")
+    high = _keyword(cur, "높은배수")
+    for day in QUIET_BEFORE:
+        _daily(cur, low, day, 10)
+        _daily(cur, high, day, 1)
+    _daily(cur, low, QUIET, 12)  # 약 4.2배
+    _daily(cur, high, QUIET, 8)  # 28배
+    refresh_surge(cur, QUIET)
+
+    terms = [row.term for row in daily_ranked(cur, QUIET, 10, 2)]
+
+    assert terms.index("높은배수") < terms.index("낮은배수")

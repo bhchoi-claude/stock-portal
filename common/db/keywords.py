@@ -193,7 +193,9 @@ class DailyKeyword:
     is_confirmed: bool
 
 
-def daily_ranked(cur: psycopg.Cursor, day: date, limit: int) -> list[DailyKeyword]:
+def daily_ranked(
+    cur: psycopg.Cursor, day: date, limit: int, min_count: int = 2
+) -> list[DailyKeyword]:
     """그날 **급등도 순서**. 급등 여부는 화면 쪽에서 임계값과 견준다.
 
     **절대 빈도로 줄 세우지 않는다.** "반도체 120회" 는 정보가 아니고
@@ -207,6 +209,14 @@ def daily_ranked(cur: psycopg.Cursor, day: date, limit: int) -> list[DailyKeywor
     2026-09-01 까지는 `mention_count` 순이었다. 그래서 늘 많이 나오는
     'AI'(39회, 2.97배)와 '금'(26회, 2.02배)이 상위를 차지하고, 정작 그날의
     신호인 '폴더블'(9회, 63배)이 아래에 묻혔다.
+
+    **오늘 `min_count` 미만 나온 표현은 뒤로 미룬다** (2026-09-04).
+    `ma7` 이 1/7 이면 배수가 정확히 7.00 이 된다 — 지난 주에 한 번,
+    오늘 한 번 나온 표현이 전부 같은 값으로 상위에 낀다.
+
+    **기준선(`min_baseline`)으로는 이것을 못 가른다.** 노이즈와 진짜 새
+    테마의 `ma7` 이 똑같이 0.1~0.4 대다. 둘을 가르는 것은 오늘 건수다 —
+    1회냐 3~5회냐. 그래서 기준선이 아니라 건수로 미룬다.
     """
     cur.execute(
         """
@@ -215,11 +225,12 @@ def daily_ranked(cur: psycopg.Cursor, day: date, limit: int) -> list[DailyKeywor
         FROM keyword_daily d
         JOIN keyword k ON k.keyword_id = d.keyword_id
         WHERE d.trade_date = %s
-        ORDER BY COALESCE(d.surge_ratio, d.mention_count) DESC,
+        ORDER BY (d.mention_count >= %s) DESC,
+                 COALESCE(d.surge_ratio, d.mention_count) DESC,
                  d.mention_count DESC, k.term
         LIMIT %s
         """,
-        (day, limit),
+        (day, min_count, limit),
     )
     return [DailyKeyword(*row) for row in cur.fetchall()]
 
