@@ -1,0 +1,14 @@
+[Unit]
+Description=stock-portal 정보수집 일일 브리핑
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bh-server
+WorkingDirectory=/home/bh-server/stock-portal
+# 없으면 로그가 빈 파일로 남는다 (2026-09-03)
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/bh-server/stock-portal/.venv/bin/python -m collectors.news.briefing
+StandardOutput=append:/home/bh-server/stock-portal/logs/news.log
+StandardError=append:/home/bh-server/stock-portal/logs/news.log

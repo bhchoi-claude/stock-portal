@@ -1,0 +1,12 @@
+[Unit]
+Description=stock-portal 일일 브리핑 타이머
+
+[Timer]
+# 19:00 일 1회 배치와 10분 주기 분석이 그날 것을 다 넣은 뒤다.
+# 앞당기면 저녁 원문이 빠진 브리핑이 나간다
+OnCalendar=*-*-* 19:30 Asia/Seoul
+# 서버가 꺼져 있어 놓친 날은 보내지 않는다. 지난 하루의 브리핑은 쓸모가 없다
+Persistent=false
+
+[Install]
+WantedBy=timers.target

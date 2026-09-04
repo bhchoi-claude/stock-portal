@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime
 
 import psycopg
 
@@ -168,3 +168,39 @@ def collection_status(cur: psycopg.Cursor) -> list[tuple[str, int, datetime | No
         """
     )
     return [(row[0], row[1], row[2]) for row in cur.fetchall()]
+
+
+def samples_on_day(
+    cur: psycopg.Cursor, keyword_id: int, day: date, limit: int
+) -> list[str]:
+    """그 키워드가 그날 나온 원문 본문. 브리핑에 표본으로 넣는다.
+
+    날짜 경계는 `aggregate_day` 와 같은 달력일(KST) 기준이다. 다르게 잡으면
+    브리핑의 표본이 집계된 건수와 어긋난다.
+    """
+    cur.execute(
+        """
+        SELECT r.content
+        FROM keyword_mention m
+        JOIN raw_message r USING (message_id)
+        WHERE m.keyword_id = %s
+          AND (r.published_at AT TIME ZONE 'Asia/Seoul')::date = %s
+        ORDER BY r.published_at DESC
+        LIMIT %s
+        """,
+        (keyword_id, day, limit),
+    )
+    return [row[0] for row in cur.fetchall()]
+
+
+def analyzed_count(cur: psycopg.Cursor, day: date) -> int:
+    """그날 분석을 마친 원문 수. 브리핑이 얼마나 두꺼운 근거 위에 있는지다."""
+    cur.execute(
+        """
+        SELECT COUNT(*) FROM raw_message
+        WHERE analyzed_at IS NOT NULL
+          AND (published_at AT TIME ZONE 'Asia/Seoul')::date = %s
+        """,
+        (day,),
+    )
+    return cur.fetchone()[0]
