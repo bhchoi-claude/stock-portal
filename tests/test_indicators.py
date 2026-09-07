@@ -6,6 +6,7 @@ from decimal import Decimal
 from collectors.market.indicators import (
     KospiMaGapCollector,
     VkospiCollector,
+    customs_range,
     daily_returns,
     ma_gap_records,
 )
@@ -174,3 +175,25 @@ def test_since_이전_수급은_지표로_만들지_않는다(monkeypatch):
 
     assert [r.period_date for r in result.records] == [date(2026, 1, 5)]
     assert result.records[0].indicator_code == "FOREIGN_NET"
+
+
+# --- 관세청 조회 구간 ---
+
+
+def test_관세청은_진행_중인_달을_요청하지_않는다():
+    """이번 달을 넣으면 며칠치가 작년 한 달 전체와 비교된다.
+
+    2026-09-08 에 EXPORT_YOY 가 -75.0% 로 나왔다. 8월 68.7% 옆에서
+    혼자 뒤집힌 값이었다 (2026-09-08 실측).
+    """
+    start, end = customs_range(date(2026, 9, 8), {"customs_months": 36})
+
+    assert end == "202608"
+    assert start == "202309"
+
+
+def test_관세청_구간이_연초에_해를_넘긴다():
+    start, end = customs_range(date(2026, 1, 15), {"customs_months": 36})
+
+    assert end == "202512"
+    assert start == "202301"

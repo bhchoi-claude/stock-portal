@@ -176,12 +176,24 @@ def fill_market_returns(kospi: list[IndexClose], kosdaq: list[IndexClose]) -> in
 
 
 def customs_range(end: date, params: dict) -> tuple[str, str]:
-    """관세청 조회 구간(YYYYMM). 월 단위라 개월수로 거슬러 올라간다."""
+    """관세청 조회 구간(YYYYMM). 월 단위라 개월수로 거슬러 올라간다.
+
+    **진행 중인 달은 빼고 지난달까지 받는다** (2026-09-08). 이번 달을
+    넣으면 며칠치 부분 수출액이 작년 같은 달 **한 달 전체**와 비교된다.
+    2026-09-08 에 EXPORT_YOY 가 -75.0% 로 나왔다. 8월 68.7%, 7월 63.0%
+    옆에서 혼자 뒤집힌 값이다. 매달 초마다 같은 일이 있었다.
+
+    부분 데이터인지 API 응답으로는 알 수 없다. 완성된 달만 요청해서 막는다.
+    """
     months = params["customs_months"]
     year, month = end.year, end.month - months
     while month <= 0:
         year, month = year - 1, month + 12
-    return f"{year}{month:02d}", f"{end.year}{end.month:02d}"
+
+    last_year, last_month = end.year, end.month - 1
+    if last_month == 0:
+        last_year, last_month = last_year - 1, 12
+    return f"{year}{month:02d}", f"{last_year}{last_month:02d}"
 
 
 def main(argv: list[str]) -> int:
