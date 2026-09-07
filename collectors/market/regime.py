@@ -54,6 +54,28 @@ def indicator_score(value: Decimal, danger: Decimal, safe: Decimal) -> Decimal:
     return max(Decimal(-1), min(Decimal(1), raw))
 
 
+def score_of(value: Decimal, thresholds: dict[str, Any]) -> Decimal:
+    """임계값 형식에 맞게 지표 점수를 낸다.
+
+    두 점(`danger`·`safe`)이면 선형이다. 한쪽 끝만 위험한 지표를 위한 것이다.
+
+    세 점(`danger_low`·`safe`·`danger_high`)이면 `safe` 를 꼭짓점으로 양쪽이
+    내려가는 삼각형이다. **양끝이 다 위험한 지표가 있다** — 이격도는 낮으면
+    하락추세고 높으면 과열이다. 두 점으로는 그 모양을 그릴 수 없어
+    2026-05~06 에 이격도 68% 를 '최대 안전' 으로 읽었고, 그 직후 7월에
+    -2.2% 까지 무너졌다.
+
+    윗가지는 `indicator_score` 를 danger 가 더 큰 쪽으로 부른다. 분모가
+    음수가 되어 방향이 저절로 뒤집힌다. 새 계산식을 만들지 않는다.
+    """
+    safe = Decimal(str(thresholds["safe"]))
+    if "danger" in thresholds:
+        return indicator_score(value, Decimal(str(thresholds["danger"])), safe)
+    if value <= safe:
+        return indicator_score(value, Decimal(str(thresholds["danger_low"])), safe)
+    return indicator_score(value, Decimal(str(thresholds["danger_high"])), safe)
+
+
 def is_fresh(period_date: date, as_of: date, max_age_days: int | None) -> bool:
     """묵은 값인지 본다. 죽은 소스의 마지막 값이 계속 쓰이면 안 된다."""
     if max_age_days is None:
@@ -95,12 +117,7 @@ def evaluate(
                 logger.info("%s 값이 %s 로 묵어 판정에서 뺍니다", code, period_date)
                 continue
 
-            thresholds = item["thresholds"]
-            score = indicator_score(
-                value,
-                Decimal(str(thresholds["danger"])),
-                Decimal(str(thresholds["safe"])),
-            )
+            score = score_of(value, item["thresholds"])
             scored.append((Decimal(str(item["weight"])), score))
             used[code] = value
 

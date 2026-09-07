@@ -11,6 +11,7 @@ from collectors.market.regime import (
     evaluate,
     indicator_score,
     is_fresh,
+    score_of,
     weighted_mean,
 )
 from common.config import load_config
@@ -161,9 +162,12 @@ def test_실제_규칙_파일이_읽히고_형식이_맞는다():
     for layer, spec in rules["layers"].items():
         assert spec["weight"] > 0, layer
         for item in spec["indicators"]:
-            assert item["thresholds"]["danger"] != item["thresholds"]["safe"], item[
-                "code"
-            ]
+            # 두 점이든 세 점이든 safe 와 같은 값이 있으면 방향을 못 정한다
+            th = item["thresholds"]
+            ends = [th[k] for k in ("danger", "danger_low", "danger_high") if k in th]
+            assert ends, item["code"]
+            for end in ends:
+                assert end != th["safe"], item["code"]
 
 
 def test_실제_규칙_파일의_계층_가중치_합이_일이다():
@@ -215,3 +219,52 @@ def test_실제_규칙_파일에서_safe_쪽도_동작한다():
 
     assert result.layer_scores["risk"] == Decimal(1)
     assert result.regime is Regime.SAFE
+
+
+# --- 세 점 임계값 (양끝이 다 위험한 지표) ---
+
+TENT = {"danger_low": 0.0, "safe": 20.0, "danger_high": 60.0}
+
+
+def test_세_점은_꼭짓점에서_가장_안전하다():
+    assert score_of(Decimal(20), TENT) == Decimal(1)
+
+
+def test_세_점은_양쪽_끝에서_가장_위험하다():
+    """**이것이 두 점으로는 안 되던 것이다.** 낮아도 높아도 위험이다."""
+    assert score_of(Decimal(0), TENT) == Decimal(-1)
+    assert score_of(Decimal(60), TENT) == Decimal(-1)
+
+
+def test_세_점은_바깥을_잘라낸다():
+    assert score_of(Decimal(-10), TENT) == Decimal(-1)
+    assert score_of(Decimal(99), TENT) == Decimal(-1)
+
+
+def test_세_점은_양쪽_중간에서_영이다():
+    assert score_of(Decimal(10), TENT) == Decimal(0)
+    assert score_of(Decimal(40), TENT) == Decimal(0)
+
+
+def test_두_점_형식은_그대로_동작한다():
+    """여섯 지표가 아직 두 점이다. 형식을 늘리며 깨뜨리지 않았는지 본다."""
+    assert score_of(Decimal(0), {"danger": 0, "safe": 10}) == Decimal(-1)
+    assert score_of(Decimal(10), {"danger": 0, "safe": 10}) == Decimal(1)
+    # VKOSPI 처럼 danger 가 더 큰 경우
+    assert score_of(Decimal(25), {"danger": 25, "safe": 15}) == Decimal(-1)
+
+
+def test_과열이_안전으로_읽히지_않는다():
+    """2026-05~06 실측값. 옛 두 점 규칙은 여기서 +1 을 줬다."""
+    old = indicator_score(Decimal("68.1"), Decimal(17), Decimal(67))
+    assert old == Decimal(1)
+
+    assert score_of(Decimal("68.1"), TENT) == Decimal(-1)
+
+
+def test_이백일선_근처가_위험으로_읽히지_않는다():
+    """2026-09 실측값. 옛 규칙은 여기서 -1 을 줬다."""
+    old = indicator_score(Decimal("11.3"), Decimal(17), Decimal(67))
+    assert old == Decimal(-1)
+
+    assert score_of(Decimal("11.3"), TENT) > Decimal(0)
