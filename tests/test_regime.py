@@ -268,3 +268,63 @@ def test_이백일선_근처가_위험으로_읽히지_않는다():
     assert old == Decimal(-1)
 
     assert score_of(Decimal("11.3"), TENT) > Decimal(0)
+
+
+# --- 실물 계층 임계값 (2026-09-08 재조정) ---
+
+
+def _threshold(code: str) -> dict:
+    rules = load_config("regime_rules")
+    for spec in rules["layers"].values():
+        for item in spec["indicators"]:
+            if item["code"] == code:
+                return item["thresholds"]
+    raise AssertionError(code)
+
+
+def test_평년_수출_증가율이_최대_위험이_아니다():
+    """옛 임계값(danger 8.0)이 5년 반의 중앙값이라 평년이 전부 -1 이었다.
+
+    2022~2025 연평균이 +6.9 / -7.1 / +8.3 / +3.6 인데 넷 다 -1 로 읽혔다.
+    지표가 아니라 상수였다 (2026-09-08 실측 68개월).
+    """
+    th = _threshold("EXPORT_YOY")
+
+    # 중앙값 7.6% 근처는 중립이어야 한다
+    assert abs(score_of(Decimal("7.6"), th)) < Decimal("0.2")
+    # 평년 어느 해도 바닥에 붙지 않는다
+    for yearly in ("6.9", "-7.1", "8.3", "3.6"):
+        assert score_of(Decimal(yearly), th) > Decimal(-1), yearly
+
+
+def test_수출_감소는_여전히_위험이다():
+    """중립으로 옮기느라 방향을 잃으면 안 된다."""
+    th = _threshold("EXPORT_YOY")
+
+    assert score_of(Decimal("-16.4"), th) == Decimal(-1)
+    assert score_of(Decimal("68.7"), th) == Decimal(1)
+
+
+def test_반도체_다운사이클이_업사이클과_갈린다():
+    """2023 은 -22.3%, 2024 는 +41.0% 였다. 둘이 같은 값이면 못 쓴다."""
+    th = _threshold("EXPORT_SEMI_YOY")
+
+    down = score_of(Decimal("-22.3"), th)
+    up = score_of(Decimal("41.0"), th)
+
+    assert down < Decimal("-0.5")
+    assert up > Decimal("0.5")
+
+
+def test_품목별_지표는_총계보다_오래_기다린다():
+    """Itemtrade 가 Newtrade 보다 한 달 늦다. 같은 값이면 매달 빠진다."""
+    assert _age("EXPORT_SEMI_YOY") > _age("EXPORT_YOY")
+
+
+def _age(code: str) -> int:
+    rules = load_config("regime_rules")
+    for spec in rules["layers"].values():
+        for item in spec["indicators"]:
+            if item["code"] == code:
+                return item["max_age_days"]
+    raise AssertionError(code)
