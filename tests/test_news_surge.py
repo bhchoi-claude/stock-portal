@@ -51,7 +51,7 @@ def test_missing_days_count_as_zero(cur):
     행이 있는 날만 평균 내면 어쩌다 한 번 나오는 표현의 기준선이 1.0 이 되어
     급등이 묻힌다.
     """
-    keyword_id = _keyword(cur, "유리기판")
+    keyword_id = _keyword(cur, "띄엄띄엄나온말")
     # 8일 전에 한 번, 그리고 오늘 7번. 사이는 비어 있다
     _daily(cur, keyword_id, date(2026, 8, 23), 1)
     _daily(cur, keyword_id, TODAY, 7)
@@ -170,6 +170,13 @@ def test_한_번_나온_신규는_위로_안_온다(cur):
 
 
 def _keyword(cur, term: str) -> int:
+    """**실제로 쓰일 법한 말을 넣지 않는다.** 지어낸 말만 쓴다.
+
+    이 테스트는 엔진·수집기와 같은 DB 를 쓴다. 실제 키워드를 쓰면 LLM 이
+    그 말을 사전에 넣는 순간 UniqueViolation 으로 깨지고, 설령 통과해도
+    그 키워드의 **진짜 `keyword_daily` 행이 산수를 오염시킨다.**
+    2026-09-08 에 '유리기판' 이 그렇게 깨졌다.
+    """
     cur.execute("INSERT INTO keyword (term) VALUES (%s) RETURNING keyword_id", (term,))
     return cur.fetchone()[0]
 
