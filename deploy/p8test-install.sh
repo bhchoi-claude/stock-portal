@@ -37,6 +37,9 @@ Description=Phase 8 $1 (임시)
 [Timer]
 OnCalendar=Mon..Fri $2 Asia/Seoul
 Persistent=false
+# **필요하다.** 없으면 타이머가 자기 이름과 같은 p8test-limit.service 를
+# 찾다가 'unit to trigger not loaded' 로 시작을 거부한다. 우리는 템플릿을 쓴다
+Unit=p8test@$1.service
 
 [Install]
 WantedBy=timers.target
