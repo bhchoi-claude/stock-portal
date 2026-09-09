@@ -19,6 +19,9 @@ Type=oneshot
 User=bh-server
 WorkingDirectory=$ROOT
 Environment=PYTHONUNBUFFERED=1
+# **필요하다.** 파이썬은 스크립트가 있는 디렉터리(deploy/)를 sys.path 에
+# 넣지 작업 디렉터리를 넣지 않는다. 없으면 common 을 못 찾는다
+Environment=PYTHONPATH=$ROOT
 ExecStart=$ROOT/.venv/bin/python $ROOT/deploy/p8test.py %i
 StandardOutput=append:$ROOT/logs/p8test.log
 StandardError=append:$ROOT/logs/p8test.log
